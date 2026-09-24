@@ -20,6 +20,7 @@ public:
 
     bool Initialize(HWND hWnd);
     void Resize(UINT width, UINT height);
+    void UpdateTheme();
     void Render(
         POINT screenPos,
         const RECT& rcBar,
@@ -49,9 +50,10 @@ private:
     UINT m_width = 0;
     UINT m_height = 0;
 
+    bool m_isLightTheme = false;
+
     // Brushes
-    Microsoft::WRL::ComPtr<ID2D1SolidColorBrush> m_pBgBrush;
-    Microsoft::WRL::ComPtr<ID2D1SolidColorBrush> m_pBorderBrush;
+    Microsoft::WRL::ComPtr<ID2D1SolidColorBrush> pHitTestBrush;
     Microsoft::WRL::ComPtr<ID2D1SolidColorBrush> m_pTextPrimaryBrush;
     Microsoft::WRL::ComPtr<ID2D1SolidColorBrush> m_pTextSecondaryBrush;
     Microsoft::WRL::ComPtr<ID2D1SolidColorBrush> m_pLyricHighlightBrush;
@@ -60,6 +62,7 @@ private:
     Microsoft::WRL::ComPtr<ID2D1SolidColorBrush> m_pSpectrumBrush;
     Microsoft::WRL::ComPtr<ID2D1SolidColorBrush> m_pBtnHoverBrush;
     Microsoft::WRL::ComPtr<ID2D1SolidColorBrush> m_pBtnIconBrush;
+    Microsoft::WRL::ComPtr<ID2D1SolidColorBrush> m_pCoverPlaceholderBrush;
 
     // Text Formats
     Microsoft::WRL::ComPtr<IDWriteTextFormat> m_pTitleFormat;

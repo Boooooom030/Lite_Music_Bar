@@ -6,12 +6,38 @@ namespace MusicBar {
 constexpr UINT WM_APP_TRACK_CHANGED = WM_APP + 102;
 constexpr UINT WM_APP_LYRICS_LOADED = WM_APP + 103;
 
-App::App() = default;
+App::App() {
+    s_pInstance = this;
+}
 
 App::~App() {
+    if (m_hTaskbarHook) {
+        UnhookWinEvent(m_hTaskbarHook);
+        m_hTaskbarHook = nullptr;
+    }
+    if (s_pInstance == this) {
+        s_pInstance = nullptr;
+    }
     if (m_hSingleInstanceMutex) {
         CloseHandle(m_hSingleInstanceMutex);
         m_hSingleInstanceMutex = nullptr;
+    }
+}
+
+void CALLBACK App::StaticWinEventProc(
+    HWINEVENTHOOK /*hWinEventHook*/,
+    DWORD event,
+    HWND hwnd,
+    LONG idObject,
+    LONG /*idChild*/,
+    DWORD /*idEventThread*/,
+    DWORD /*dwmsEventTime*/
+) {
+    if (event == EVENT_OBJECT_LOCATIONCHANGE && idObject == OBJID_WINDOW) {
+        if (s_pInstance && s_pInstance->m_dock.GetTaskbarHwnd() == hwnd) {
+            s_pInstance->m_dock.UpdateLayout();
+            s_pInstance->RepaintBar();
+        }
     }
 }
 
@@ -99,6 +125,17 @@ bool App::Initialize(HINSTANCE hInstance) {
     // Create system tray icon
     m_trayIcon.Create(m_hWnd, hInstance, 1);
 
+    // Hook taskbar location changes for real-time auto-hide & collapse tracking
+    m_hTaskbarHook = SetWinEventHook(
+        EVENT_OBJECT_LOCATIONCHANGE,
+        EVENT_OBJECT_LOCATIONCHANGE,
+        nullptr,
+        StaticWinEventProc,
+        0,
+        0,
+        WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS
+    );
+
     // Setup timers: 60 FPS for smooth spectrum / lyrics sync, 1s for taskbar watchdog
     SetTimer(m_hWnd, 1, 16, nullptr);
     SetTimer(m_hWnd, 2, 1000, nullptr);
@@ -175,6 +212,13 @@ LRESULT App::HandleMessage(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                 m_dock.UpdateLayout();
             }
         }
+        return 0;
+    }
+
+    case WM_SETTINGCHANGE: {
+        // Windows theme (Dark / Light) or personalization changed
+        m_renderer.UpdateTheme();
+        RepaintBar();
         return 0;
     }
 

@@ -5,6 +5,25 @@
 
 namespace MusicBar {
 
+namespace {
+
+bool DetectSystemLightTheme() {
+    DWORD value = 0;
+    DWORD size = sizeof(value);
+    LSTATUS status = RegGetValueW(
+        HKEY_CURRENT_USER,
+        L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
+        L"SystemUsesLightTheme",
+        RRF_RT_REG_DWORD,
+        nullptr,
+        &value,
+        &size
+    );
+    return (status == ERROR_SUCCESS && value != 0);
+}
+
+} // namespace
+
 Direct2DRenderer::Direct2DRenderer() = default;
 
 Direct2DRenderer::~Direct2DRenderer() {
@@ -46,7 +65,7 @@ HRESULT Direct2DRenderer::CreateDeviceIndependentResources() {
     );
     if (FAILED(hr)) return hr;
 
-    // Create Text Formats (Segoe UI Variable / Microsoft YaHei UI)
+    // Create Text Formats (Segoe UI Variable Text / Microsoft YaHei UI)
     hr = m_pDWriteFactory->CreateTextFormat(
         L"Segoe UI Variable Text",
         nullptr,
@@ -134,6 +153,59 @@ HRESULT Direct2DRenderer::CreateDeviceIndependentResources() {
     return S_OK;
 }
 
+void Direct2DRenderer::UpdateTheme() {
+    m_isLightTheme = DetectSystemLightTheme();
+
+    if (!m_pRenderTarget) return;
+
+    D2D1_COLOR_F colorTextPrimary = m_isLightTheme
+        ? D2D1::ColorF(0.10f, 0.10f, 0.10f, 0.95f)
+        : D2D1::ColorF(0.98f, 0.98f, 0.98f, 0.95f);
+
+    D2D1_COLOR_F colorTextSecondary = m_isLightTheme
+        ? D2D1::ColorF(0.38f, 0.38f, 0.38f, 0.88f)
+        : D2D1::ColorF(0.70f, 0.70f, 0.70f, 0.85f);
+
+    D2D1_COLOR_F colorLyric = m_isLightTheme
+        ? D2D1::ColorF(0.0f, 0.48f, 0.85f, 0.95f)
+        : D2D1::ColorF(0.24f, 0.88f, 0.60f, 0.95f);
+
+    D2D1_COLOR_F colorIcon = m_isLightTheme
+        ? D2D1::ColorF(0.12f, 0.12f, 0.12f, 0.95f)
+        : D2D1::ColorF(0.95f, 0.95f, 0.95f, 0.95f);
+
+    D2D1_COLOR_F colorBtnHover = m_isLightTheme
+        ? D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.08f)
+        : D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.12f);
+
+    D2D1_COLOR_F colorProgressBg = m_isLightTheme
+        ? D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.10f)
+        : D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.15f);
+
+    D2D1_COLOR_F colorProgressFg = m_isLightTheme
+        ? D2D1::ColorF(0.0f, 0.48f, 0.85f, 0.95f)
+        : D2D1::ColorF(0.24f, 0.88f, 0.60f, 0.95f);
+
+    D2D1_COLOR_F colorSpectrum = m_isLightTheme
+        ? D2D1::ColorF(0.0f, 0.48f, 0.85f, 0.90f)
+        : D2D1::ColorF(0.30f, 0.76f, 1.0f, 0.90f);
+
+    D2D1_COLOR_F colorCoverPlaceholder = m_isLightTheme
+        ? D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.08f)
+        : D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.12f);
+
+    m_pRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.005f), &pHitTestBrush);
+    m_pRenderTarget->CreateSolidColorBrush(colorTextPrimary, &m_pTextPrimaryBrush);
+    m_pRenderTarget->CreateSolidColorBrush(colorTextSecondary, &m_pTextSecondaryBrush);
+    m_pRenderTarget->CreateSolidColorBrush(colorLyric, &m_pLyricHighlightBrush);
+    m_pRenderTarget->CreateSolidColorBrush(colorProgressBg, &m_pProgressBgBrush);
+    m_pRenderTarget->CreateSolidColorBrush(colorProgressFg, &m_pProgressFgBrush);
+    m_pRenderTarget->CreateSolidColorBrush(colorSpectrum, &m_pSpectrumBrush);
+    m_pRenderTarget->CreateSolidColorBrush(colorBtnHover, &m_pBtnHoverBrush);
+    m_pRenderTarget->CreateSolidColorBrush(colorIcon, &m_pBtnIconBrush);
+    m_pRenderTarget->CreateSolidColorBrush(colorCoverPlaceholder, &m_pCoverPlaceholderBrush);
+}
+
 HRESULT Direct2DRenderer::CreateDeviceResources() {
     if (m_pRenderTarget) return S_OK;
 
@@ -148,25 +220,7 @@ HRESULT Direct2DRenderer::CreateDeviceResources() {
     );
     if (FAILED(hr)) return hr;
 
-    // Create Brushes
-    // Background translucent acrylic dark tint
-    m_pRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.12f, 0.12f, 0.15f, 0.88f), &m_pBgBrush);
-    // Soft subtle border
-    m_pRenderTarget->CreateSolidColorBrush(D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.15f), &m_pBorderBrush);
-    // Bright text
-    m_pRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.96f, 0.96f, 0.98f, 1.0f), &m_pTextPrimaryBrush);
-    // Muted text
-    m_pRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.70f, 0.70f, 0.75f, 1.0f), &m_pTextSecondaryBrush);
-    // Vibrant lyrics emerald accent
-    m_pRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.24f, 0.88f, 0.58f, 1.0f), &m_pLyricHighlightBrush);
-    // Progress line
-    m_pRenderTarget->CreateSolidColorBrush(D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.18f), &m_pProgressBgBrush);
-    m_pRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.24f, 0.88f, 0.58f, 1.0f), &m_pProgressFgBrush);
-    // Spectrum bars cyan/teal accent
-    m_pRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.35f, 0.80f, 1.0f, 0.90f), &m_pSpectrumBrush);
-    // Button hover & icons
-    m_pRenderTarget->CreateSolidColorBrush(D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.16f), &m_pBtnHoverBrush);
-    m_pRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.92f, 0.92f, 0.95f, 1.0f), &m_pBtnIconBrush);
+    UpdateTheme();
 
     // Reload cached album art if present
     if (!m_cachedImageBytes.empty()) {
@@ -182,8 +236,7 @@ HRESULT Direct2DRenderer::CreateDeviceResources() {
 
 void Direct2DRenderer::DiscardDeviceResources() {
     m_pAlbumArtBitmap.Reset();
-    m_pBgBrush.Reset();
-    m_pBorderBrush.Reset();
+    pHitTestBrush.Reset();
     m_pTextPrimaryBrush.Reset();
     m_pTextSecondaryBrush.Reset();
     m_pLyricHighlightBrush.Reset();
@@ -192,6 +245,7 @@ void Direct2DRenderer::DiscardDeviceResources() {
     m_pSpectrumBrush.Reset();
     m_pBtnHoverBrush.Reset();
     m_pBtnIconBrush.Reset();
+    m_pCoverPlaceholderBrush.Reset();
     m_pRenderTarget.Reset();
 
     if (m_hDIB) {
@@ -408,26 +462,27 @@ void Direct2DRenderer::Render(
     }
 
     m_pRenderTarget->BeginDraw();
+
+    // 1. Transparent canvas: No dark card, no border. Taskbar shows through!
     m_pRenderTarget->Clear(D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.0f));
 
+    // Invisible hit-test area (alpha=1/255) ensures entire bar area handles drag/right-click
+    m_pRenderTarget->FillRectangle(
+        D2D1::RectF(0.0f, 0.0f, static_cast<float>(m_width), static_cast<float>(m_height)),
+        pHitTestBrush.Get()
+    );
+
     D2D1_RECT_F barRect = D2D1::RectF(
-        0.5f,
-        0.5f,
-        static_cast<float>(m_width) - 0.5f,
-        static_cast<float>(m_height) - 0.5f
+        0.0f,
+        0.0f,
+        static_cast<float>(m_width),
+        static_cast<float>(m_height)
     );
 
     float fBarHeight = barRect.bottom - barRect.top;
-    float radius = 7.0f * dpiScale;
-
-    // 1. Draw Bar Background & Soft Outline (acrylic frosted glass style)
-    D2D1_ROUNDED_RECT roundedBar = D2D1::RoundedRect(barRect, radius, radius);
-    m_pRenderTarget->FillRoundedRectangle(roundedBar, m_pBgBrush.Get());
-    m_pRenderTarget->DrawRoundedRectangle(roundedBar, m_pBorderBrush.Get(), 1.0f);
-
     float padding = 4.0f * dpiScale;
 
-    // 2. Draw Album Art (Left side)
+    // 2. Draw Album Art (Left side: 28x28 with 4px rounded corners)
     float artSize = fBarHeight - 2.0f * padding;
     D2D1_RECT_F artRect = D2D1::RectF(
         barRect.left + padding,
@@ -457,7 +512,7 @@ void Direct2DRenderer::Render(
             }
         }
     } else {
-        m_pRenderTarget->FillRoundedRectangle(artRounded, m_pProgressBgBrush.Get());
+        m_pRenderTarget->FillRoundedRectangle(artRounded, m_pCoverPlaceholderBrush.Get());
         DrawNoteIcon(artRect);
     }
 
@@ -494,7 +549,7 @@ void Direct2DRenderer::Render(
     drawBtnHover(m_rcBtnNext, ButtonType::Next);
     DrawVectorNext(m_rcBtnNext);
 
-    // 4. Spectrum Bars (Immediately to the left of buttons)
+    // 4. Spectrum Bars (Immediately to the left of buttons: 16 bands)
     float spectrumWidth = 36.0f * dpiScale;
     float spectrumHeight = fBarHeight - 14.0f * dpiScale;
     float spectrumLeft = m_rcBtnPrev.left - 6.0f * dpiScale - spectrumWidth;
@@ -548,7 +603,7 @@ void Direct2DRenderer::Render(
                 barRect.top + 3.0f * dpiScale + lineH
             );
 
-            std::wstring displayTitle = track.title.empty() ? L"MusicBar (C++)" : track.title;
+            std::wstring displayTitle = track.title.empty() ? L"MusicBar" : track.title;
             m_pRenderTarget->DrawText(
                 displayTitle.c_str(),
                 static_cast<UINT32>(displayTitle.length()),
@@ -574,15 +629,15 @@ void Direct2DRenderer::Render(
             );
         }
 
-        // 6. Progress Bar (2px height at bottom of the middle region)
+        // 6. Progress Bar (1.5px height at bottom of the middle region)
         float progLeft = middleLeft;
         float progRight = middleRight;
         float progTop = barRect.bottom - 5.0f * dpiScale;
-        float progBottom = progTop + 2.0f * dpiScale;
+        float progBottom = progTop + 1.5f * dpiScale;
 
         D2D1_RECT_F bgProgRect = D2D1::RectF(progLeft, progTop, progRight, progBottom);
         m_pRenderTarget->FillRoundedRectangle(
-            D2D1::RoundedRect(bgProgRect, 1.0f * dpiScale, 1.0f * dpiScale),
+            D2D1::RoundedRect(bgProgRect, 0.75f * dpiScale, 0.75f * dpiScale),
             m_pProgressBgBrush.Get()
         );
 
@@ -596,7 +651,7 @@ void Direct2DRenderer::Render(
             float curRight = progLeft + (progRight - progLeft) * ratio;
             D2D1_RECT_F fgProgRect = D2D1::RectF(progLeft, progTop, curRight, progBottom);
             m_pRenderTarget->FillRoundedRectangle(
-                D2D1::RoundedRect(fgProgRect, 1.0f * dpiScale, 1.0f * dpiScale),
+                D2D1::RoundedRect(fgProgRect, 0.75f * dpiScale, 0.75f * dpiScale),
                 m_pProgressFgBrush.Get()
             );
         }

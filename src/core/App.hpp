@@ -22,13 +22,26 @@ public:
 
 private:
     static LRESULT CALLBACK StaticWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
+    static void CALLBACK StaticWinEventProc(
+        HWINEVENTHOOK hWinEventHook,
+        DWORD event,
+        HWND hwnd,
+        LONG idObject,
+        LONG idChild,
+        DWORD idEventThread,
+        DWORD dwmsEventTime
+    );
+
     LRESULT HandleMessage(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
     void RepaintBar();
 
+    static inline App* s_pInstance = nullptr;
+
     HINSTANCE m_hInstance = nullptr;
     HWND m_hWnd = nullptr;
     HANDLE m_hSingleInstanceMutex = nullptr;
+    HWINEVENTHOOK m_hTaskbarHook = nullptr;
     UINT m_msgTaskbarCreated = 0;
 
     TaskbarDock m_dock;
