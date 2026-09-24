@@ -9,6 +9,7 @@
 #include <string>
 #include <vector>
 #include <memory>
+#include <chrono>
 #include "core/Types.hpp"
 
 namespace MusicBar {
@@ -81,6 +82,20 @@ private:
     D2D1_RECT_F m_rcBtnPrev{};
     D2D1_RECT_F m_rcBtnPlayPause{};
     D2D1_RECT_F m_rcBtnNext{};
+
+    // Smooth Animation states
+    float m_hoverProgress = 0.0f; // 0.0 (resting) -> 1.0 (hovered)
+    float m_btnHoverAlpha[3] = { 0.0f, 0.0f, 0.0f }; // Prev, PlayPause, Next
+    std::chrono::steady_clock::time_point m_lastAnimTime{};
+
+    float m_baseBgAlpha = 0.80f;
+    float m_baseBorderAlpha = 0.14f;
+    float m_baseHighlightAlpha = 0.18f;
+    float m_baseBtnHoverAlpha = 0.18f;
+    float m_baseTextPrimaryAlpha = 0.95f;
+    float m_baseTextSecondaryAlpha = 0.85f;
+    float m_baseLyricAlpha = 0.95f;
+    float m_baseBtnIconAlpha = 0.95f;
 
     HRESULT CreateDeviceIndependentResources();
     HRESULT CreateDeviceResources();

@@ -158,25 +158,34 @@ void Direct2DRenderer::UpdateTheme() {
 
     if (!m_pRenderTarget) return;
 
+    m_baseTextPrimaryAlpha = 0.95f;
+    m_baseTextSecondaryAlpha = m_isLightTheme ? 0.88f : 0.85f;
+    m_baseLyricAlpha = 0.95f;
+    m_baseBtnIconAlpha = 0.95f;
+    m_baseBtnHoverAlpha = m_isLightTheme ? 0.12f : 0.18f;
+    m_baseBgAlpha = m_isLightTheme ? 0.85f : 0.80f;
+    m_baseBorderAlpha = m_isLightTheme ? 0.10f : 0.14f;
+    m_baseHighlightAlpha = m_isLightTheme ? 0.45f : 0.18f;
+
     D2D1_COLOR_F colorTextPrimary = m_isLightTheme
-        ? D2D1::ColorF(0.10f, 0.10f, 0.10f, 0.95f)
-        : D2D1::ColorF(0.98f, 0.98f, 0.98f, 0.95f);
+        ? D2D1::ColorF(0.10f, 0.10f, 0.10f, m_baseTextPrimaryAlpha)
+        : D2D1::ColorF(0.98f, 0.98f, 0.98f, m_baseTextPrimaryAlpha);
 
     D2D1_COLOR_F colorTextSecondary = m_isLightTheme
-        ? D2D1::ColorF(0.38f, 0.38f, 0.38f, 0.88f)
-        : D2D1::ColorF(0.70f, 0.70f, 0.70f, 0.85f);
+        ? D2D1::ColorF(0.38f, 0.38f, 0.38f, m_baseTextSecondaryAlpha)
+        : D2D1::ColorF(0.70f, 0.70f, 0.70f, m_baseTextSecondaryAlpha);
 
     D2D1_COLOR_F colorLyric = m_isLightTheme
-        ? D2D1::ColorF(0.0f, 0.48f, 0.85f, 0.95f)
-        : D2D1::ColorF(0.24f, 0.88f, 0.60f, 0.95f);
+        ? D2D1::ColorF(0.0f, 0.48f, 0.85f, m_baseLyricAlpha)
+        : D2D1::ColorF(0.24f, 0.88f, 0.60f, m_baseLyricAlpha);
 
     D2D1_COLOR_F colorIcon = m_isLightTheme
-        ? D2D1::ColorF(0.12f, 0.12f, 0.12f, 0.95f)
-        : D2D1::ColorF(0.95f, 0.95f, 0.95f, 0.95f);
+        ? D2D1::ColorF(0.12f, 0.12f, 0.12f, m_baseBtnIconAlpha)
+        : D2D1::ColorF(0.95f, 0.95f, 0.95f, m_baseBtnIconAlpha);
 
     D2D1_COLOR_F colorBtnHover = m_isLightTheme
-        ? D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.08f)
-        : D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.12f);
+        ? D2D1::ColorF(0.0f, 0.0f, 0.0f, m_baseBtnHoverAlpha)
+        : D2D1::ColorF(1.0f, 1.0f, 1.0f, m_baseBtnHoverAlpha);
 
     D2D1_COLOR_F colorProgressBg = m_isLightTheme
         ? D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.10f)
@@ -195,16 +204,16 @@ void Direct2DRenderer::UpdateTheme() {
         : D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.12f);
 
     D2D1_COLOR_F colorFrostedBg = m_isLightTheme
-        ? D2D1::ColorF(0.95f, 0.95f, 0.97f, 0.85f)
-        : D2D1::ColorF(0.12f, 0.12f, 0.14f, 0.80f);
+        ? D2D1::ColorF(0.95f, 0.95f, 0.97f, m_baseBgAlpha)
+        : D2D1::ColorF(0.12f, 0.12f, 0.14f, m_baseBgAlpha);
 
     D2D1_COLOR_F colorFrostedBorder = m_isLightTheme
-        ? D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.10f)
-        : D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.14f);
+        ? D2D1::ColorF(0.0f, 0.0f, 0.0f, m_baseBorderAlpha)
+        : D2D1::ColorF(1.0f, 1.0f, 1.0f, m_baseBorderAlpha);
 
     D2D1_COLOR_F colorFrostedHighlight = m_isLightTheme
-        ? D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.45f)
-        : D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.18f);
+        ? D2D1::ColorF(1.0f, 1.0f, 1.0f, m_baseHighlightAlpha)
+        : D2D1::ColorF(1.0f, 1.0f, 1.0f, m_baseHighlightAlpha);
 
     m_pRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.005f), &pHitTestBrush);
     m_pRenderTarget->CreateSolidColorBrush(colorTextPrimary, &m_pTextPrimaryBrush);
@@ -326,7 +335,7 @@ void Direct2DRenderer::UpdateAlbumArt(const std::vector<uint8_t>& imageBytes) {
 }
 
 ButtonType Direct2DRenderer::HitTestButtons(int mouseX, int mouseY) const {
-    if (m_rcBtnPrev.right <= m_rcBtnPrev.left) {
+    if (m_hoverProgress < 0.4f || m_rcBtnPrev.right <= m_rcBtnPrev.left) {
         return ButtonType::None;
     }
 
@@ -487,6 +496,41 @@ void Direct2DRenderer::Render(
 
     m_pRenderTarget->BeginDraw();
 
+    // 0. Smooth Animation Engine (Gentle 380ms hover transition + 180ms button glow)
+    auto now = std::chrono::steady_clock::now();
+    if (m_lastAnimTime.time_since_epoch().count() == 0) {
+        m_lastAnimTime = now;
+    }
+    float dt = std::chrono::duration<float>(now - m_lastAnimTime).count();
+    m_lastAnimTime = now;
+    if (dt > 0.05f) dt = 0.016f;
+
+    float targetHover = isHovered ? 1.0f : 0.0f;
+    float change = dt / 0.38f; // ~380ms slow and gentle transition
+    if (m_hoverProgress < targetHover) {
+        m_hoverProgress = std::min(targetHover, m_hoverProgress + change);
+    } else if (m_hoverProgress > targetHover) {
+        m_hoverProgress = std::max(targetHover, m_hoverProgress - change);
+    }
+
+    // Smoothstep easing: f(t) = t * t * (3 - 2t)
+    float t = std::clamp(m_hoverProgress, 0.0f, 1.0f);
+    float eased = t * t * (3.0f - 2.0f * t);
+
+    // Individual button hover alpha animations (~0.18s glow)
+    auto updateBtnHover = [&](int idx, ButtonType type) {
+        float target = (hoveredBtn == type && isHovered) ? 1.0f : 0.0f;
+        float btnChange = dt / 0.18f;
+        if (m_btnHoverAlpha[idx] < target) {
+            m_btnHoverAlpha[idx] = std::min(target, m_btnHoverAlpha[idx] + btnChange);
+        } else if (m_btnHoverAlpha[idx] > target) {
+            m_btnHoverAlpha[idx] = std::max(target, m_btnHoverAlpha[idx] - btnChange);
+        }
+    };
+    updateBtnHover(0, ButtonType::Prev);
+    updateBtnHover(1, ButtonType::PlayPause);
+    updateBtnHover(2, ButtonType::Next);
+
     // 1. Transparent canvas: No dark card, no border. Taskbar shows through!
     m_pRenderTarget->Clear(D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.0f));
 
@@ -506,13 +550,17 @@ void Direct2DRenderer::Render(
     float fBarHeight = barRect.bottom - barRect.top;
     float padding = 4.0f * dpiScale;
 
-    // 2. Frosted background card (Only drawn when hovered: "等到悬浮之后，整体变成磨砂")
-    if (isHovered && m_pFrostedBgBrush && m_pFrostedBorderBrush) {
+    // 2. Frosted background card (Gently fades and blooms in with animation)
+    if (eased > 0.002f && m_pFrostedBgBrush && m_pFrostedBorderBrush) {
+        m_pFrostedBgBrush->SetOpacity(m_baseBgAlpha * eased);
+        m_pFrostedBorderBrush->SetOpacity(m_baseBorderAlpha * eased);
+
+        float inset = (2.0f - 1.0f * eased) * dpiScale;
         D2D1_RECT_F bgRect = D2D1::RectF(
-            1.0f * dpiScale,
-            1.0f * dpiScale,
-            static_cast<float>(m_width) - 1.0f * dpiScale,
-            static_cast<float>(m_height) - 1.0f * dpiScale
+            inset,
+            inset,
+            static_cast<float>(m_width) - inset,
+            static_cast<float>(m_height) - inset
         );
         float radius = 7.0f * dpiScale;
         D2D1_ROUNDED_RECT roundedBg = D2D1::RoundedRect(bgRect, radius, radius);
@@ -521,6 +569,7 @@ void Direct2DRenderer::Render(
         m_pRenderTarget->DrawRoundedRectangle(roundedBg, m_pFrostedBorderBrush.Get(), 1.0f * dpiScale);
 
         if (m_pFrostedHighlightBrush) {
+            m_pFrostedHighlightBrush->SetOpacity(m_baseHighlightAlpha * eased);
             m_pRenderTarget->DrawLine(
                 D2D1::Point2F(bgRect.left + radius, bgRect.top + 1.0f * dpiScale),
                 D2D1::Point2F(bgRect.right - radius, bgRect.top + 1.0f * dpiScale),
@@ -560,6 +609,7 @@ void Direct2DRenderer::Render(
             }
         }
     } else {
+        m_pTextSecondaryBrush->SetOpacity(m_baseTextSecondaryAlpha);
         m_pRenderTarget->FillRoundedRectangle(artRounded, m_pCoverPlaceholderBrush.Get());
         DrawNoteIcon(artRect);
     }
@@ -574,6 +624,7 @@ void Direct2DRenderer::Render(
     float barGap = 1.0f * dpiScale;
     float singleBarW = (spectrumWidth - (numBands - 1) * barGap) / numBands;
 
+    m_pSpectrumBrush->SetOpacity(0.90f);
     for (size_t i = 0; i < numBands; ++i) {
         float val = std::clamp(spectrum.bands[i], 0.05f, 1.0f);
         float h = val * spectrumHeight;
@@ -584,12 +635,12 @@ void Direct2DRenderer::Render(
         m_pRenderTarget->FillRectangle(barR, m_pSpectrumBrush.Get());
     }
 
-    // 5. Center Area
-    if (isHovered) {
-        // Media Buttons placed in the exact center! ("然后放到中间")
-        float btnWidth = 26.0f * dpiScale;
-        float btnHeight = 26.0f * dpiScale;
-        float btnGap = 8.0f * dpiScale;
+    // 5. Center Area: Smooth Cross-fade between Text and Centered Buttons
+    if (eased > 0.001f) {
+        // Buttons gently unfurl from center (20px -> 26px, 4px -> 8px gap) with opacity
+        float btnWidth = (20.0f + 6.0f * eased) * dpiScale;
+        float btnHeight = (20.0f + 6.0f * eased) * dpiScale;
+        float btnGap = (4.0f + 4.0f * eased) * dpiScale;
         float btnsTotalW = 3.0f * btnWidth + 2.0f * btnGap;
 
         float centerX = (barRect.left + barRect.right) * 0.5f;
@@ -601,31 +652,42 @@ void Direct2DRenderer::Render(
         m_rcBtnPlayPause = D2D1::RectF(m_rcBtnPrev.right + btnGap, btnTop, m_rcBtnPrev.right + btnGap + btnWidth, btnTop + btnHeight);
         m_rcBtnNext = D2D1::RectF(m_rcBtnPlayPause.right + btnGap, btnTop, m_rcBtnPlayPause.right + btnGap + btnWidth, btnTop + btnHeight);
 
-        auto drawBtnHover = [&](const D2D1_RECT_F& r, ButtonType type) {
-            if (hoveredBtn == type) {
+        m_pBtnIconBrush->SetOpacity(m_baseBtnIconAlpha * eased);
+
+        auto drawBtnHover = [&](const D2D1_RECT_F& r, int idx) {
+            float hAlpha = m_btnHoverAlpha[idx] * eased;
+            if (hAlpha > 0.005f) {
                 D2D1_ROUNDED_RECT hoverRect = D2D1::RoundedRect(r, 6.0f * dpiScale, 6.0f * dpiScale);
+                m_pBtnHoverBrush->SetOpacity(m_baseBtnHoverAlpha * hAlpha);
                 m_pRenderTarget->FillRoundedRectangle(hoverRect, m_pBtnHoverBrush.Get());
             }
         };
 
-        drawBtnHover(m_rcBtnPrev, ButtonType::Prev);
+        drawBtnHover(m_rcBtnPrev, 0);
         DrawVectorPrev(m_rcBtnPrev);
 
-        drawBtnHover(m_rcBtnPlayPause, ButtonType::PlayPause);
+        drawBtnHover(m_rcBtnPlayPause, 1);
         if (track.isPlaying) {
             DrawVectorPause(m_rcBtnPlayPause);
         } else {
             DrawVectorPlay(m_rcBtnPlayPause);
         }
 
-        drawBtnHover(m_rcBtnNext, ButtonType::Next);
+        drawBtnHover(m_rcBtnNext, 2);
         DrawVectorNext(m_rcBtnNext);
     } else {
         m_rcBtnPrev = D2D1::RectF(0, 0, 0, 0);
         m_rcBtnPlayPause = D2D1::RectF(0, 0, 0, 0);
         m_rcBtnNext = D2D1::RectF(0, 0, 0, 0);
+    }
 
-        // Track Title / Lyrics in the middle
+    // Text in the middle cross-fades out smoothly
+    float textAlpha = std::clamp(1.0f - eased * 1.4f, 0.0f, 1.0f);
+    if (textAlpha > 0.01f) {
+        m_pTextPrimaryBrush->SetOpacity(m_baseTextPrimaryAlpha * textAlpha);
+        m_pTextSecondaryBrush->SetOpacity(m_baseTextSecondaryAlpha * textAlpha);
+        m_pLyricHighlightBrush->SetOpacity(m_baseLyricAlpha * textAlpha);
+
         float middleLeft = artRect.right + 6.0f * dpiScale;
         float middleRight = spectrumLeft - 6.0f * dpiScale;
         float middleWidth = middleRight - middleLeft;
@@ -695,6 +757,7 @@ void Direct2DRenderer::Render(
 
     if (progRight > progLeft) {
         D2D1_RECT_F bgProgRect = D2D1::RectF(progLeft, progTop, progRight, progBottom);
+        m_pProgressBgBrush->SetOpacity(0.15f);
         m_pRenderTarget->FillRoundedRectangle(
             D2D1::RoundedRect(bgProgRect, 0.75f * dpiScale, 0.75f * dpiScale),
             m_pProgressBgBrush.Get()
@@ -709,6 +772,7 @@ void Direct2DRenderer::Render(
         if (ratio > 0.0f) {
             float curRight = progLeft + (progRight - progLeft) * ratio;
             D2D1_RECT_F fgProgRect = D2D1::RectF(progLeft, progTop, curRight, progBottom);
+            m_pProgressFgBrush->SetOpacity(0.95f);
             m_pRenderTarget->FillRoundedRectangle(
                 D2D1::RoundedRect(fgProgRect, 0.75f * dpiScale, 0.75f * dpiScale),
                 m_pProgressFgBrush.Get()
