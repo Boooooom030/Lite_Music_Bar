@@ -1,0 +1,22 @@
+#pragma once
+
+#include "ILyricsProvider.hpp"
+#include "net/HttpClient.hpp"
+
+namespace MusicBar {
+
+class KugouProvider : public ILyricsProvider {
+public:
+    std::string GetName() const override { return "Kugou"; }
+
+    std::optional<LyricDocument> FetchLyrics(
+        const std::wstring& title,
+        const std::wstring& artist,
+        int64_t durationMs
+    ) override;
+
+private:
+    HttpClient m_http;
+};
+
+} // namespace MusicBar

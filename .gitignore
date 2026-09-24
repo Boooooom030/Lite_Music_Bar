@@ -1,0 +1,32 @@
+# CMake build output
+build/
+bin/
+out/
+
+# Visual Studio temporary files
+.vs/
+*.user
+*.suo
+*.sln.docstates
+
+# Compiled Object files
+*.obj
+*.o
+*.res
+*.lib
+*.exp
+*.ilk
+*.pdb
+
+# Legacy C# artifacts
+MusicBar/bin/
+MusicBar/obj/
+
+# IDE files
+.vscode/
+.idea/
+
+# Windows desktop / explorer artifacts
+Thumbs.db
+ehthumbs.db
+Desktop.ini
