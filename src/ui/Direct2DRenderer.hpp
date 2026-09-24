@@ -64,6 +64,9 @@ private:
     Microsoft::WRL::ComPtr<ID2D1SolidColorBrush> m_pBtnHoverBrush;
     Microsoft::WRL::ComPtr<ID2D1SolidColorBrush> m_pBtnIconBrush;
     Microsoft::WRL::ComPtr<ID2D1SolidColorBrush> m_pCoverPlaceholderBrush;
+    Microsoft::WRL::ComPtr<ID2D1SolidColorBrush> m_pFrostedBgBrush;
+    Microsoft::WRL::ComPtr<ID2D1SolidColorBrush> m_pFrostedBorderBrush;
+    Microsoft::WRL::ComPtr<ID2D1SolidColorBrush> m_pFrostedHighlightBrush;
 
     // Text Formats
     Microsoft::WRL::ComPtr<IDWriteTextFormat> m_pTitleFormat;

@@ -194,6 +194,18 @@ void Direct2DRenderer::UpdateTheme() {
         ? D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.08f)
         : D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.12f);
 
+    D2D1_COLOR_F colorFrostedBg = m_isLightTheme
+        ? D2D1::ColorF(0.95f, 0.95f, 0.97f, 0.85f)
+        : D2D1::ColorF(0.12f, 0.12f, 0.14f, 0.80f);
+
+    D2D1_COLOR_F colorFrostedBorder = m_isLightTheme
+        ? D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.10f)
+        : D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.14f);
+
+    D2D1_COLOR_F colorFrostedHighlight = m_isLightTheme
+        ? D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.45f)
+        : D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.18f);
+
     m_pRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.005f), &pHitTestBrush);
     m_pRenderTarget->CreateSolidColorBrush(colorTextPrimary, &m_pTextPrimaryBrush);
     m_pRenderTarget->CreateSolidColorBrush(colorTextSecondary, &m_pTextSecondaryBrush);
@@ -204,6 +216,9 @@ void Direct2DRenderer::UpdateTheme() {
     m_pRenderTarget->CreateSolidColorBrush(colorBtnHover, &m_pBtnHoverBrush);
     m_pRenderTarget->CreateSolidColorBrush(colorIcon, &m_pBtnIconBrush);
     m_pRenderTarget->CreateSolidColorBrush(colorCoverPlaceholder, &m_pCoverPlaceholderBrush);
+    m_pRenderTarget->CreateSolidColorBrush(colorFrostedBg, &m_pFrostedBgBrush);
+    m_pRenderTarget->CreateSolidColorBrush(colorFrostedBorder, &m_pFrostedBorderBrush);
+    m_pRenderTarget->CreateSolidColorBrush(colorFrostedHighlight, &m_pFrostedHighlightBrush);
 }
 
 HRESULT Direct2DRenderer::CreateDeviceResources() {
@@ -246,6 +261,9 @@ void Direct2DRenderer::DiscardDeviceResources() {
     m_pBtnHoverBrush.Reset();
     m_pBtnIconBrush.Reset();
     m_pCoverPlaceholderBrush.Reset();
+    m_pFrostedBgBrush.Reset();
+    m_pFrostedBorderBrush.Reset();
+    m_pFrostedHighlightBrush.Reset();
     m_pRenderTarget.Reset();
 
     if (m_hDIB) {
@@ -352,9 +370,10 @@ void Direct2DRenderer::DrawVectorPlay(const D2D1_RECT_F& rect) {
 void Direct2DRenderer::DrawVectorPause(const D2D1_RECT_F& rect) {
     float cx = (rect.left + rect.right) * 0.5f;
     float cy = (rect.top + rect.bottom) * 0.5f;
-    float barW = 2.4f;
-    float barH = 10.0f;
-    float gap = 2.5f;
+    float w = rect.right - rect.left;
+    float barW = w * 0.11f;
+    float barH = w * 0.44f;
+    float gap = w * 0.10f;
 
     D2D1_RECT_F bar1 = D2D1::RectF(cx - gap - barW, cy - barH * 0.5f, cx - gap, cy + barH * 0.5f);
     D2D1_RECT_F bar2 = D2D1::RectF(cx + gap, cy - barH * 0.5f, cx + gap + barW, cy + barH * 0.5f);
@@ -487,12 +506,36 @@ void Direct2DRenderer::Render(
     float fBarHeight = barRect.bottom - barRect.top;
     float padding = 4.0f * dpiScale;
 
-    // 2. Draw Album Art (Left side: 28x28 with 4px rounded corners)
+    // 2. Frosted background card (Only drawn when hovered: "等到悬浮之后，整体变成磨砂")
+    if (isHovered && m_pFrostedBgBrush && m_pFrostedBorderBrush) {
+        D2D1_RECT_F bgRect = D2D1::RectF(
+            1.0f * dpiScale,
+            1.0f * dpiScale,
+            static_cast<float>(m_width) - 1.0f * dpiScale,
+            static_cast<float>(m_height) - 1.0f * dpiScale
+        );
+        float radius = 7.0f * dpiScale;
+        D2D1_ROUNDED_RECT roundedBg = D2D1::RoundedRect(bgRect, radius, radius);
+
+        m_pRenderTarget->FillRoundedRectangle(roundedBg, m_pFrostedBgBrush.Get());
+        m_pRenderTarget->DrawRoundedRectangle(roundedBg, m_pFrostedBorderBrush.Get(), 1.0f * dpiScale);
+
+        if (m_pFrostedHighlightBrush) {
+            m_pRenderTarget->DrawLine(
+                D2D1::Point2F(bgRect.left + radius, bgRect.top + 1.0f * dpiScale),
+                D2D1::Point2F(bgRect.right - radius, bgRect.top + 1.0f * dpiScale),
+                m_pFrostedHighlightBrush.Get(),
+                1.0f * dpiScale
+            );
+        }
+    }
+
+    // 3. Draw Album Art (Left side: 28x28 with 4px rounded corners)
     float artSize = fBarHeight - 2.0f * padding;
     D2D1_RECT_F artRect = D2D1::RectF(
-        barRect.left + padding,
+        barRect.left + padding + 2.0f * dpiScale,
         barRect.top + padding,
-        barRect.left + padding + artSize,
+        barRect.left + padding + 2.0f * dpiScale + artSize,
         barRect.top + padding + artSize
     );
 
@@ -521,28 +564,46 @@ void Direct2DRenderer::Render(
         DrawNoteIcon(artRect);
     }
 
-    // 3. Media Buttons (Right side: Prev, Play/Pause, Next) - Shown only on hover
+    // 4. Spectrum Bars (Right side: 16 bands)
     float spectrumWidth = 36.0f * dpiScale;
     float spectrumHeight = fBarHeight - 14.0f * dpiScale;
     float spectrumBottom = barRect.bottom - 7.0f * dpiScale;
-    float spectrumLeft = 0.0f;
+    float spectrumLeft = barRect.right - padding - spectrumWidth - 4.0f * dpiScale;
 
+    size_t numBands = SpectrumData::BAND_COUNT;
+    float barGap = 1.0f * dpiScale;
+    float singleBarW = (spectrumWidth - (numBands - 1) * barGap) / numBands;
+
+    for (size_t i = 0; i < numBands; ++i) {
+        float val = std::clamp(spectrum.bands[i], 0.05f, 1.0f);
+        float h = val * spectrumHeight;
+        float bx = spectrumLeft + i * (singleBarW + barGap);
+        float by = spectrumBottom - h;
+
+        D2D1_RECT_F barR = D2D1::RectF(bx, by, bx + singleBarW, spectrumBottom);
+        m_pRenderTarget->FillRectangle(barR, m_pSpectrumBrush.Get());
+    }
+
+    // 5. Center Area
     if (isHovered) {
-        float btnWidth = 20.0f * dpiScale;
-        float btnHeight = 20.0f * dpiScale;
-        float btnGap = 2.0f * dpiScale;
+        // Media Buttons placed in the exact center! ("然后放到中间")
+        float btnWidth = 26.0f * dpiScale;
+        float btnHeight = 26.0f * dpiScale;
+        float btnGap = 8.0f * dpiScale;
         float btnsTotalW = 3.0f * btnWidth + 2.0f * btnGap;
 
-        float btnTop = barRect.top + (fBarHeight - btnHeight) * 0.5f;
-        float btnPrevLeft = barRect.right - padding - btnsTotalW;
+        float centerX = (barRect.left + barRect.right) * 0.5f;
+        float centerY = (barRect.top + barRect.bottom) * 0.5f;
+        float btnStartX = centerX - btnsTotalW * 0.5f;
+        float btnTop = centerY - btnHeight * 0.5f;
 
-        m_rcBtnPrev = D2D1::RectF(btnPrevLeft, btnTop, btnPrevLeft + btnWidth, btnTop + btnHeight);
+        m_rcBtnPrev = D2D1::RectF(btnStartX, btnTop, btnStartX + btnWidth, btnTop + btnHeight);
         m_rcBtnPlayPause = D2D1::RectF(m_rcBtnPrev.right + btnGap, btnTop, m_rcBtnPrev.right + btnGap + btnWidth, btnTop + btnHeight);
         m_rcBtnNext = D2D1::RectF(m_rcBtnPlayPause.right + btnGap, btnTop, m_rcBtnPlayPause.right + btnGap + btnWidth, btnTop + btnHeight);
 
         auto drawBtnHover = [&](const D2D1_RECT_F& r, ButtonType type) {
             if (hoveredBtn == type) {
-                D2D1_ROUNDED_RECT hoverRect = D2D1::RoundedRect(r, 4.0f * dpiScale, 4.0f * dpiScale);
+                D2D1_ROUNDED_RECT hoverRect = D2D1::RoundedRect(r, 6.0f * dpiScale, 6.0f * dpiScale);
                 m_pRenderTarget->FillRoundedRectangle(hoverRect, m_pBtnHoverBrush.Get());
             }
         };
@@ -559,97 +620,80 @@ void Direct2DRenderer::Render(
 
         drawBtnHover(m_rcBtnNext, ButtonType::Next);
         DrawVectorNext(m_rcBtnNext);
-
-        spectrumLeft = m_rcBtnPrev.left - 6.0f * dpiScale - spectrumWidth;
     } else {
         m_rcBtnPrev = D2D1::RectF(0, 0, 0, 0);
         m_rcBtnPlayPause = D2D1::RectF(0, 0, 0, 0);
         m_rcBtnNext = D2D1::RectF(0, 0, 0, 0);
 
-        spectrumLeft = barRect.right - padding - spectrumWidth - 2.0f * dpiScale;
-    }
+        // Track Title / Lyrics in the middle
+        float middleLeft = artRect.right + 6.0f * dpiScale;
+        float middleRight = spectrumLeft - 6.0f * dpiScale;
+        float middleWidth = middleRight - middleLeft;
 
-    // 4. Spectrum Bars
-    size_t numBands = SpectrumData::BAND_COUNT;
-    float barGap = 1.0f * dpiScale;
-    float singleBarW = (spectrumWidth - (numBands - 1) * barGap) / numBands;
+        if (middleWidth > 30.0f * dpiScale) {
+            bool hasLyrics = showLyrics && !lyrics.lines.empty() && lyrics.activeIndex >= 0;
 
-    for (size_t i = 0; i < numBands; ++i) {
-        float val = std::clamp(spectrum.bands[i], 0.05f, 1.0f);
-        float h = val * spectrumHeight;
-        float bx = spectrumLeft + i * (singleBarW + barGap);
-        float by = spectrumBottom - h;
+            if (hasLyrics) {
+                const auto& line = lyrics.lines[lyrics.activeIndex];
+                D2D1_RECT_F lyricRect = D2D1::RectF(
+                    middleLeft,
+                    barRect.top + 2.0f * dpiScale,
+                    middleRight,
+                    barRect.bottom - 8.0f * dpiScale
+                );
 
-        D2D1_RECT_F barR = D2D1::RectF(bx, by, bx + singleBarW, spectrumBottom);
-        m_pRenderTarget->FillRectangle(barR, m_pSpectrumBrush.Get());
-    }
+                m_pRenderTarget->DrawText(
+                    line.text.c_str(),
+                    static_cast<UINT32>(line.text.length()),
+                    m_pLyricFormat.Get(),
+                    lyricRect,
+                    m_pLyricHighlightBrush.Get()
+                );
+            } else {
+                float lineH = (fBarHeight - 10.0f * dpiScale) * 0.5f;
 
-    // 5. Middle Content: Track Title / Lyrics
-    float middleLeft = artRect.right + 6.0f * dpiScale;
-    float middleRight = spectrumLeft - 6.0f * dpiScale;
-    float middleWidth = middleRight - middleLeft;
+                D2D1_RECT_F titleRect = D2D1::RectF(
+                    middleLeft,
+                    barRect.top + 3.0f * dpiScale,
+                    middleRight,
+                    barRect.top + 3.0f * dpiScale + lineH
+                );
 
-    if (middleWidth > 30.0f * dpiScale) {
-        bool hasLyrics = showLyrics && !lyrics.lines.empty() && lyrics.activeIndex >= 0;
+                std::wstring displayTitle = track.title.empty() ? L"MusicBar" : track.title;
+                m_pRenderTarget->DrawText(
+                    displayTitle.c_str(),
+                    static_cast<UINT32>(displayTitle.length()),
+                    m_pTitleFormat.Get(),
+                    titleRect,
+                    m_pTextPrimaryBrush.Get()
+                );
 
-        if (hasLyrics) {
-            const auto& line = lyrics.lines[lyrics.activeIndex];
-            D2D1_RECT_F lyricRect = D2D1::RectF(
-                middleLeft,
-                barRect.top + 2.0f * dpiScale,
-                middleRight,
-                barRect.bottom - 8.0f * dpiScale
-            );
+                D2D1_RECT_F artistRect = D2D1::RectF(
+                    middleLeft,
+                    titleRect.bottom,
+                    middleRight,
+                    titleRect.bottom + lineH
+                );
 
-            m_pRenderTarget->DrawText(
-                line.text.c_str(),
-                static_cast<UINT32>(line.text.length()),
-                m_pLyricFormat.Get(),
-                lyricRect,
-                m_pLyricHighlightBrush.Get()
-            );
-        } else {
-            float lineH = (fBarHeight - 10.0f * dpiScale) * 0.5f;
-
-            D2D1_RECT_F titleRect = D2D1::RectF(
-                middleLeft,
-                barRect.top + 3.0f * dpiScale,
-                middleRight,
-                barRect.top + 3.0f * dpiScale + lineH
-            );
-
-            std::wstring displayTitle = track.title.empty() ? L"MusicBar" : track.title;
-            m_pRenderTarget->DrawText(
-                displayTitle.c_str(),
-                static_cast<UINT32>(displayTitle.length()),
-                m_pTitleFormat.Get(),
-                titleRect,
-                m_pTextPrimaryBrush.Get()
-            );
-
-            D2D1_RECT_F artistRect = D2D1::RectF(
-                middleLeft,
-                titleRect.bottom,
-                middleRight,
-                titleRect.bottom + lineH
-            );
-
-            std::wstring displayArtist = track.artist.empty() ? L"未播放音频" : track.artist;
-            m_pRenderTarget->DrawText(
-                displayArtist.c_str(),
-                static_cast<UINT32>(displayArtist.length()),
-                m_pArtistFormat.Get(),
-                artistRect,
-                m_pTextSecondaryBrush.Get()
-            );
+                std::wstring displayArtist = track.artist.empty() ? L"未播放音频" : track.artist;
+                m_pRenderTarget->DrawText(
+                    displayArtist.c_str(),
+                    static_cast<UINT32>(displayArtist.length()),
+                    m_pArtistFormat.Get(),
+                    artistRect,
+                    m_pTextSecondaryBrush.Get()
+                );
+            }
         }
+    }
 
-        // 6. Progress Bar (1.5px height at bottom of the middle region)
-        float progLeft = middleLeft;
-        float progRight = middleRight;
-        float progTop = barRect.bottom - 5.0f * dpiScale;
-        float progBottom = progTop + 1.5f * dpiScale;
+    // 6. Progress Bar (1.5px height at bottom of the middle region)
+    float progLeft = artRect.right + 6.0f * dpiScale;
+    float progRight = spectrumLeft - 6.0f * dpiScale;
+    float progTop = barRect.bottom - 4.5f * dpiScale;
+    float progBottom = progTop + 1.5f * dpiScale;
 
+    if (progRight > progLeft) {
         D2D1_RECT_F bgProgRect = D2D1::RectF(progLeft, progTop, progRight, progBottom);
         m_pRenderTarget->FillRoundedRectangle(
             D2D1::RoundedRect(bgProgRect, 0.75f * dpiScale, 0.75f * dpiScale),
