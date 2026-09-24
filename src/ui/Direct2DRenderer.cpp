@@ -548,21 +548,21 @@ void Direct2DRenderer::Render(
     );
 
     float fBarHeight = barRect.bottom - barRect.top;
-    float padding = 4.0f * dpiScale;
+    float padding = 6.0f * dpiScale;
 
-    // 2. Frosted background card (Gently fades and blooms in with animation)
+    // 2. Frosted background card (Zero top/bottom gap: completely fills the taskbar height)
     if (eased > 0.002f && m_pFrostedBgBrush && m_pFrostedBorderBrush) {
         m_pFrostedBgBrush->SetOpacity(m_baseBgAlpha * eased);
         m_pFrostedBorderBrush->SetOpacity(m_baseBorderAlpha * eased);
 
-        float inset = (2.0f - 1.0f * eased) * dpiScale;
+        float insetX = (1.5f - 1.0f * eased) * dpiScale;
         D2D1_RECT_F bgRect = D2D1::RectF(
-            inset,
-            inset,
-            static_cast<float>(m_width) - inset,
-            static_cast<float>(m_height) - inset
+            insetX,
+            0.0f,
+            static_cast<float>(m_width) - insetX,
+            static_cast<float>(m_height)
         );
-        float radius = 7.0f * dpiScale;
+        float radius = 4.0f * dpiScale;
         D2D1_ROUNDED_RECT roundedBg = D2D1::RoundedRect(bgRect, radius, radius);
 
         m_pRenderTarget->FillRoundedRectangle(roundedBg, m_pFrostedBgBrush.Get());
@@ -571,15 +571,15 @@ void Direct2DRenderer::Render(
         if (m_pFrostedHighlightBrush) {
             m_pFrostedHighlightBrush->SetOpacity(m_baseHighlightAlpha * eased);
             m_pRenderTarget->DrawLine(
-                D2D1::Point2F(bgRect.left + radius, bgRect.top + 1.0f * dpiScale),
-                D2D1::Point2F(bgRect.right - radius, bgRect.top + 1.0f * dpiScale),
+                D2D1::Point2F(bgRect.left + radius, 1.0f * dpiScale),
+                D2D1::Point2F(bgRect.right - radius, 1.0f * dpiScale),
                 m_pFrostedHighlightBrush.Get(),
                 1.0f * dpiScale
             );
         }
     }
 
-    // 3. Draw Album Art (Left side: 28x28 with 4px rounded corners)
+    // 3. Draw Album Art (Left side: vertically centered)
     float artSize = fBarHeight - 2.0f * padding;
     D2D1_RECT_F artRect = D2D1::RectF(
         barRect.left + padding + 2.0f * dpiScale,
@@ -588,7 +588,7 @@ void Direct2DRenderer::Render(
         barRect.top + padding + artSize
     );
 
-    D2D1_ROUNDED_RECT artRounded = D2D1::RoundedRect(artRect, 4.0f * dpiScale, 4.0f * dpiScale);
+    D2D1_ROUNDED_RECT artRounded = D2D1::RoundedRect(artRect, 6.0f * dpiScale, 6.0f * dpiScale);
 
     if (m_pAlbumArtBitmap) {
         Microsoft::WRL::ComPtr<ID2D1RoundedRectangleGeometry> artGeom;
@@ -616,8 +616,8 @@ void Direct2DRenderer::Render(
 
     // 4. Spectrum Bars (Right side: 16 bands)
     float spectrumWidth = 36.0f * dpiScale;
-    float spectrumHeight = fBarHeight - 14.0f * dpiScale;
-    float spectrumBottom = barRect.bottom - 7.0f * dpiScale;
+    float spectrumHeight = fBarHeight - 18.0f * dpiScale;
+    float spectrumBottom = barRect.bottom - 8.0f * dpiScale;
     float spectrumLeft = barRect.right - padding - spectrumWidth - 4.0f * dpiScale;
 
     size_t numBands = SpectrumData::BAND_COUNT;
@@ -699,7 +699,7 @@ void Direct2DRenderer::Render(
                 const auto& line = lyrics.lines[lyrics.activeIndex];
                 D2D1_RECT_F lyricRect = D2D1::RectF(
                     middleLeft,
-                    barRect.top + 2.0f * dpiScale,
+                    barRect.top + 6.0f * dpiScale,
                     middleRight,
                     barRect.bottom - 8.0f * dpiScale
                 );
@@ -712,13 +712,13 @@ void Direct2DRenderer::Render(
                     m_pLyricHighlightBrush.Get()
                 );
             } else {
-                float lineH = (fBarHeight - 10.0f * dpiScale) * 0.5f;
+                float lineH = (fBarHeight - 16.0f * dpiScale) * 0.5f;
 
                 D2D1_RECT_F titleRect = D2D1::RectF(
                     middleLeft,
-                    barRect.top + 3.0f * dpiScale,
+                    barRect.top + 6.0f * dpiScale,
                     middleRight,
-                    barRect.top + 3.0f * dpiScale + lineH
+                    barRect.top + 6.0f * dpiScale + lineH
                 );
 
                 std::wstring displayTitle = track.title.empty() ? L"MusicBar" : track.title;
@@ -752,7 +752,7 @@ void Direct2DRenderer::Render(
     // 6. Progress Bar (1.5px height at bottom of the middle region)
     float progLeft = artRect.right + 6.0f * dpiScale;
     float progRight = spectrumLeft - 6.0f * dpiScale;
-    float progTop = barRect.bottom - 4.5f * dpiScale;
+    float progTop = barRect.bottom - 3.0f * dpiScale;
     float progBottom = progTop + 1.5f * dpiScale;
 
     if (progRight > progLeft) {

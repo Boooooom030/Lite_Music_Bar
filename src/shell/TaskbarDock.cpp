@@ -78,14 +78,10 @@ void TaskbarDock::UpdateLayout() {
 
     float scale = GetDpiScale();
     int scaledWidth = static_cast<int>(m_barWidth * scale);
-    int scaledHeight = static_cast<int>(m_barHeight * scale);
+    int scaledHeight = tbHeight;
 
-    if (scaledHeight > tbHeight - 4) {
-        scaledHeight = tbHeight - 4;
-    }
-
-    // Vertical position is ALWAYS centered within the taskbar
-    m_relY = (tbHeight - scaledHeight) / 2;
+    // Fill the full vertical height of the taskbar: zero top/bottom gaps!
+    m_relY = 0;
 
     int posX = 0;
     if (m_offsetX >= 0) {
