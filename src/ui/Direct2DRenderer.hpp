@@ -21,6 +21,7 @@ public:
     bool Initialize(HWND hWnd);
     void Resize(UINT width, UINT height);
     void Render(
+        POINT screenPos,
         const RECT& rcBar,
         float dpiScale,
         const MediaTrackInfo& track,
@@ -39,7 +40,14 @@ private:
     Microsoft::WRL::ComPtr<IDWriteFactory1> m_pDWriteFactory;
     Microsoft::WRL::ComPtr<IWICImagingFactory> m_pWICFactory;
 
-    Microsoft::WRL::ComPtr<ID2D1HwndRenderTarget> m_pRenderTarget;
+    Microsoft::WRL::ComPtr<ID2D1DCRenderTarget> m_pRenderTarget;
+
+    // 32-bit DIB for UpdateLayeredWindow
+    HDC m_hMemDC = nullptr;
+    HBITMAP m_hDIB = nullptr;
+    void* m_pDIBBits = nullptr;
+    UINT m_width = 0;
+    UINT m_height = 0;
 
     // Brushes
     Microsoft::WRL::ComPtr<ID2D1SolidColorBrush> m_pBgBrush;

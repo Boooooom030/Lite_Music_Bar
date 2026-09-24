@@ -24,6 +24,8 @@ private:
     static LRESULT CALLBACK StaticWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
     LRESULT HandleMessage(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
+    void RepaintBar();
+
     HINSTANCE m_hInstance = nullptr;
     HWND m_hWnd = nullptr;
     HANDLE m_hSingleInstanceMutex = nullptr;
@@ -44,7 +46,6 @@ private:
     bool m_isDragging = false;
     POINT m_dragStartPt{};
     int m_dragStartOffsetX = 0;
-    int m_dragStartOffsetY = 0;
 
     bool m_isVisible = true;
     bool m_showLyrics = true;

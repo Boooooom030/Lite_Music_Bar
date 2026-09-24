@@ -37,19 +37,19 @@ bool TaskbarDock::Attach(HWND hAppWnd) {
         return false;
     }
 
-    // Set owner to Shell_TrayWnd so it minimizes/hides with taskbar
-    SetWindowLongPtrW(m_hAppWnd, GWLP_HWNDPARENT, reinterpret_cast<LONG_PTR>(m_hTaskbar));
+    // Set styles for a genuine layered taskbar child window
+    LONG_PTR exStyle = GetWindowLongPtrW(m_hAppWnd, GWL_EXSTYLE);
+    exStyle |= WS_EX_LAYERED | WS_EX_TOOLWINDOW;
+    exStyle &= ~(WS_EX_TOPMOST | WS_EX_APPWINDOW);
+    SetWindowLongPtrW(m_hAppWnd, GWL_EXSTYLE, exStyle);
 
-    // Ensure Topmost popup styles
     LONG_PTR style = GetWindowLongPtrW(m_hAppWnd, GWL_STYLE);
-    style &= ~WS_CHILD;
-    style |= WS_POPUP | WS_VISIBLE | WS_CLIPSIBLINGS;
+    style &= ~WS_POPUP;
+    style |= WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS;
     SetWindowLongPtrW(m_hAppWnd, GWL_STYLE, style);
 
-    LONG_PTR exStyle = GetWindowLongPtrW(m_hAppWnd, GWL_EXSTYLE);
-    exStyle |= WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE;
-    exStyle &= ~WS_EX_APPWINDOW;
-    SetWindowLongPtrW(m_hAppWnd, GWL_EXSTYLE, exStyle);
+    // Dock as direct child of the taskbar (Shell_TrayWnd)
+    SetParent(m_hAppWnd, m_hTaskbar);
 
     m_isDocked = true;
     UpdateLayout();
@@ -57,7 +57,14 @@ bool TaskbarDock::Attach(HWND hAppWnd) {
 }
 
 void TaskbarDock::Detach() {
-    m_isDocked = false;
+    if (m_isDocked && m_hAppWnd && IsWindow(m_hAppWnd)) {
+        SetParent(m_hAppWnd, nullptr);
+        LONG_PTR style = GetWindowLongPtrW(m_hAppWnd, GWL_STYLE);
+        style &= ~WS_CHILD;
+        style |= WS_POPUP;
+        SetWindowLongPtrW(m_hAppWnd, GWL_STYLE, style);
+        m_isDocked = false;
+    }
 }
 
 void TaskbarDock::UpdateLayout() {
@@ -66,8 +73,6 @@ void TaskbarDock::UpdateLayout() {
     RefreshTaskbarInfo();
     if (!m_hTaskbar) return;
 
-    int tbLeft = m_rcTaskbar.left;
-    int tbTop = m_rcTaskbar.top;
     int tbWidth = m_rcTaskbar.right - m_rcTaskbar.left;
     int tbHeight = m_rcTaskbar.bottom - m_rcTaskbar.top;
 
@@ -75,82 +80,56 @@ void TaskbarDock::UpdateLayout() {
     int scaledWidth = static_cast<int>(m_barWidth * scale);
     int scaledHeight = static_cast<int>(m_barHeight * scale);
 
-    int posX = 0;
-    int posY = tbTop + (tbHeight - scaledHeight) / 2;
+    if (scaledHeight > tbHeight - 4) {
+        scaledHeight = tbHeight - 4;
+    }
 
+    // Vertical position is ALWAYS centered within the taskbar
+    m_relY = (tbHeight - scaledHeight) / 2;
+
+    int posX = 0;
     if (m_offsetX >= 0) {
         posX = m_offsetX;
-        posY = (m_offsetY >= 0) ? m_offsetY : (tbTop + (tbHeight - scaledHeight) / 2);
     } else {
         if (m_hTrayNotify && IsWindow(m_hTrayNotify)) {
             RECT rcTray{};
             GetWindowRect(m_hTrayNotify, &rcTray);
-            posX = rcTray.left - scaledWidth - static_cast<int>(14 * scale);
+            int trayRelLeft = rcTray.left - m_rcTaskbar.left;
+            posX = trayRelLeft - scaledWidth - static_cast<int>(12 * scale);
         } else {
-            posX = tbLeft + tbWidth - scaledWidth - static_cast<int>(200 * scale);
+            posX = tbWidth - scaledWidth - static_cast<int>(200 * scale);
         }
     }
 
-    // Clamp coordinates within taskbar screen bounds
-    if (posX < tbLeft) posX = tbLeft;
-    if (posX + scaledWidth > tbLeft + tbWidth) posX = tbLeft + tbWidth - scaledWidth;
+    // Clamp horizontally strictly inside taskbar boundaries
+    if (posX < 0) posX = 0;
+    if (posX + scaledWidth > tbWidth) posX = tbWidth - scaledWidth;
 
-    m_screenX = posX;
-    m_screenY = posY;
+    m_relX = posX;
 
-    // Set position and size of the MusicBar window
+    // Set position within Shell_TrayWnd client coordinates
     SetWindowPos(
         m_hAppWnd,
-        HWND_TOPMOST,
-        m_screenX,
-        m_screenY,
+        HWND_TOP,
+        m_relX,
+        m_relY,
         scaledWidth,
         scaledHeight,
         SWP_SHOWWINDOW | SWP_NOACTIVATE
     );
-
-    // Apply smooth rounded corner region
-    ApplyWindowRegion();
-
-    // Trigger repaint
-    InvalidateRect(m_hAppWnd, nullptr, FALSE);
 }
 
-void TaskbarDock::SetBarOffset(int screenX, int screenY) {
-    m_offsetX = screenX;
-    m_offsetY = screenY;
+void TaskbarDock::SetBarOffset(int relX) {
+    m_offsetX = relX;
     UpdateLayout();
 }
 
-void TaskbarDock::MoveBarDelta(int dx, int dy) {
+void TaskbarDock::MoveBarDelta(int dx) {
     if (m_offsetX < 0) {
-        m_offsetX = m_screenX;
-        m_offsetY = m_screenY;
+        m_offsetX = m_relX;
     }
     m_offsetX += dx;
-    m_offsetY += dy;
     UpdateLayout();
-}
-
-void TaskbarDock::ApplyWindowRegion() {
-    if (!m_hAppWnd) return;
-
-    int w = GetScaledWidth();
-    int h = GetScaledHeight();
-    float scale = GetDpiScale();
-
-    HRGN hRgn = CreateRoundRectRgn(
-        0,
-        0,
-        w + 1,
-        h + 1,
-        static_cast<int>(8 * scale),
-        static_cast<int>(8 * scale)
-    );
-
-    if (!SetWindowRgn(m_hAppWnd, hRgn, TRUE)) {
-        DeleteObject(hRgn);
-    }
 }
 
 } // namespace MusicBar

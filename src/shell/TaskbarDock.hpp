@@ -13,13 +13,14 @@ public:
     bool Attach(HWND hAppWnd);
     void Detach();
     void UpdateLayout();
-    void SetBarOffset(int offsetX, int offsetY);
-    void MoveBarDelta(int dx, int dy);
+    void SetBarOffset(int relX);
+    void MoveBarDelta(int dx);
 
     HWND GetTaskbarHwnd() const { return m_hTaskbar; }
     RECT GetTaskbarRect() const { return m_rcTaskbar; }
     RECT GetBarRect() const { return RECT{ 0, 0, GetScaledWidth(), GetScaledHeight() }; }
-    POINT GetScreenPos() const { return POINT{ m_screenX, m_screenY }; }
+    POINT GetScreenPos() const { return POINT{ m_rcTaskbar.left + m_relX, m_rcTaskbar.top + m_relY }; }
+    POINT GetRelativePos() const { return POINT{ m_relX, m_relY }; }
     int GetScaledWidth() const { return static_cast<int>(m_barWidth * GetDpiScale()); }
     int GetScaledHeight() const { return static_cast<int>(m_barHeight * GetDpiScale()); }
     int GetDpi() const { return m_dpi; }
@@ -32,16 +33,14 @@ private:
     HWND m_hTrayNotify = nullptr;
     RECT m_rcTaskbar{};
     int m_offsetX = -1; // -1 means auto-calculate default (left of tray)
-    int m_offsetY = -1;
-    int m_screenX = 0;
-    int m_screenY = 0;
+    int m_relX = 0;
+    int m_relY = 0;
     int m_barWidth = 280;
     int m_barHeight = 36;
     int m_dpi = 96;
     bool m_isDocked = false;
 
     void RefreshTaskbarInfo();
-    void ApplyWindowRegion();
 };
 
 } // namespace MusicBar

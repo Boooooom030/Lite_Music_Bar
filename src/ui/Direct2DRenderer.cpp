@@ -54,11 +54,10 @@ HRESULT Direct2DRenderer::CreateDeviceIndependentResources() {
         DWRITE_FONT_STYLE_NORMAL,
         DWRITE_FONT_STRETCH_NORMAL,
         11.5f,
-        L"zh-cn",
+        L"",
         &m_pTitleFormat
     );
     if (FAILED(hr)) {
-        // Fallback to Microsoft YaHei UI
         hr = m_pDWriteFactory->CreateTextFormat(
             L"Microsoft YaHei UI",
             nullptr,
@@ -66,7 +65,7 @@ HRESULT Direct2DRenderer::CreateDeviceIndependentResources() {
             DWRITE_FONT_STYLE_NORMAL,
             DWRITE_FONT_STRETCH_NORMAL,
             11.5f,
-            L"zh-cn",
+            L"",
             &m_pTitleFormat
         );
         if (FAILED(hr)) return hr;
@@ -81,7 +80,7 @@ HRESULT Direct2DRenderer::CreateDeviceIndependentResources() {
         DWRITE_FONT_STYLE_NORMAL,
         DWRITE_FONT_STRETCH_NORMAL,
         10.0f,
-        L"zh-cn",
+        L"",
         &m_pArtistFormat
     );
     if (FAILED(hr)) {
@@ -92,7 +91,7 @@ HRESULT Direct2DRenderer::CreateDeviceIndependentResources() {
             DWRITE_FONT_STYLE_NORMAL,
             DWRITE_FONT_STRETCH_NORMAL,
             10.0f,
-            L"zh-cn",
+            L"",
             &m_pArtistFormat
         );
     }
@@ -106,7 +105,7 @@ HRESULT Direct2DRenderer::CreateDeviceIndependentResources() {
         DWRITE_FONT_STYLE_NORMAL,
         DWRITE_FONT_STRETCH_NORMAL,
         11.0f,
-        L"zh-cn",
+        L"",
         &m_pLyricFormat
     );
     if (FAILED(hr)) {
@@ -117,7 +116,7 @@ HRESULT Direct2DRenderer::CreateDeviceIndependentResources() {
             DWRITE_FONT_STYLE_NORMAL,
             DWRITE_FONT_STRETCH_NORMAL,
             11.0f,
-            L"zh-cn",
+            L"",
             &m_pLyricFormat
         );
     }
@@ -138,33 +137,19 @@ HRESULT Direct2DRenderer::CreateDeviceIndependentResources() {
 HRESULT Direct2DRenderer::CreateDeviceResources() {
     if (m_pRenderTarget) return S_OK;
 
-    RECT rcClient{};
-    GetClientRect(m_hWnd, &rcClient);
-    D2D1_SIZE_U size = D2D1::SizeU(
-        std::max(1L, rcClient.right - rcClient.left),
-        std::max(1L, rcClient.bottom - rcClient.top)
-    );
-
     D2D1_RENDER_TARGET_PROPERTIES rtProps = D2D1::RenderTargetProperties(
         D2D1_RENDER_TARGET_TYPE_DEFAULT,
         D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED)
     );
 
-    D2D1_HWND_RENDER_TARGET_PROPERTIES hwndProps = D2D1::HwndRenderTargetProperties(
-        m_hWnd,
-        size,
-        D2D1_PRESENT_OPTIONS_IMMEDIATELY
-    );
-
-    HRESULT hr = m_pD2DFactory->CreateHwndRenderTarget(
+    HRESULT hr = m_pD2DFactory->CreateDCRenderTarget(
         &rtProps,
-        &hwndProps,
         &m_pRenderTarget
     );
     if (FAILED(hr)) return hr;
 
     // Create Brushes
-    // Background translucent acrylic tint
+    // Background translucent acrylic dark tint
     m_pRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.12f, 0.12f, 0.15f, 0.88f), &m_pBgBrush);
     // Soft subtle border
     m_pRenderTarget->CreateSolidColorBrush(D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.15f), &m_pBorderBrush);
@@ -208,13 +193,53 @@ void Direct2DRenderer::DiscardDeviceResources() {
     m_pBtnHoverBrush.Reset();
     m_pBtnIconBrush.Reset();
     m_pRenderTarget.Reset();
+
+    if (m_hDIB) {
+        DeleteObject(m_hDIB);
+        m_hDIB = nullptr;
+    }
+    if (m_hMemDC) {
+        DeleteDC(m_hMemDC);
+        m_hMemDC = nullptr;
+    }
+    m_pDIBBits = nullptr;
+    m_width = 0;
+    m_height = 0;
 }
 
 void Direct2DRenderer::Resize(UINT width, UINT height) {
-    if (m_pRenderTarget) {
-        D2D1_SIZE_U size = D2D1::SizeU(std::max(1U, width), std::max(1U, height));
-        m_pRenderTarget->Resize(size);
+    UINT w = std::max(1U, width);
+    UINT h = std::max(1U, height);
+    if (w == m_width && h == m_height && m_hDIB != nullptr) {
+        return;
     }
+
+    if (m_hDIB) {
+        DeleteObject(m_hDIB);
+        m_hDIB = nullptr;
+    }
+    if (m_hMemDC) {
+        DeleteDC(m_hMemDC);
+        m_hMemDC = nullptr;
+    }
+
+    m_width = w;
+    m_height = h;
+
+    HDC hdcScreen = GetDC(nullptr);
+    m_hMemDC = CreateCompatibleDC(hdcScreen);
+
+    BITMAPINFO bmi{};
+    bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    bmi.bmiHeader.biWidth = static_cast<LONG>(m_width);
+    bmi.bmiHeader.biHeight = -static_cast<LONG>(m_height); // Top-down
+    bmi.bmiHeader.biPlanes = 1;
+    bmi.bmiHeader.biBitCount = 32;
+    bmi.bmiHeader.biCompression = BI_RGB;
+
+    m_hDIB = CreateDIBSection(m_hMemDC, &bmi, DIB_RGB_COLORS, &m_pDIBBits, nullptr, 0);
+    SelectObject(m_hMemDC, m_hDIB);
+    ReleaseDC(nullptr, hdcScreen);
 }
 
 void Direct2DRenderer::UpdateAlbumArt(const std::vector<uint8_t>& imageBytes) {
@@ -360,6 +385,7 @@ void Direct2DRenderer::DrawNoteIcon(const D2D1_RECT_F& rect) {
 }
 
 void Direct2DRenderer::Render(
+    POINT screenPos,
     const RECT& rcBar,
     float dpiScale,
     const MediaTrackInfo& track,
@@ -368,22 +394,33 @@ void Direct2DRenderer::Render(
     ButtonType hoveredBtn,
     bool showLyrics
 ) {
+    (void)screenPos;
     if (FAILED(CreateDeviceResources())) return;
+
+    UINT barWidth = static_cast<UINT>(std::max(1L, rcBar.right - rcBar.left));
+    UINT barHeight = static_cast<UINT>(std::max(1L, rcBar.bottom - rcBar.top));
+
+    Resize(barWidth, barHeight);
+
+    RECT rcClient{ 0, 0, static_cast<LONG>(m_width), static_cast<LONG>(m_height) };
+    if (FAILED(m_pRenderTarget->BindDC(m_hMemDC, &rcClient))) {
+        return;
+    }
 
     m_pRenderTarget->BeginDraw();
     m_pRenderTarget->Clear(D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.0f));
 
     D2D1_RECT_F barRect = D2D1::RectF(
-        static_cast<float>(rcBar.left),
-        static_cast<float>(rcBar.top),
-        static_cast<float>(rcBar.right),
-        static_cast<float>(rcBar.bottom)
+        0.5f,
+        0.5f,
+        static_cast<float>(m_width) - 0.5f,
+        static_cast<float>(m_height) - 0.5f
     );
 
-    float barHeight = barRect.bottom - barRect.top;
+    float fBarHeight = barRect.bottom - barRect.top;
     float radius = 7.0f * dpiScale;
 
-    // 1. Draw Bar Background & Soft Outline
+    // 1. Draw Bar Background & Soft Outline (acrylic frosted glass style)
     D2D1_ROUNDED_RECT roundedBar = D2D1::RoundedRect(barRect, radius, radius);
     m_pRenderTarget->FillRoundedRectangle(roundedBar, m_pBgBrush.Get());
     m_pRenderTarget->DrawRoundedRectangle(roundedBar, m_pBorderBrush.Get(), 1.0f);
@@ -391,7 +428,7 @@ void Direct2DRenderer::Render(
     float padding = 4.0f * dpiScale;
 
     // 2. Draw Album Art (Left side)
-    float artSize = barHeight - 2.0f * padding;
+    float artSize = fBarHeight - 2.0f * padding;
     D2D1_RECT_F artRect = D2D1::RectF(
         barRect.left + padding,
         barRect.top + padding,
@@ -402,7 +439,6 @@ void Direct2DRenderer::Render(
     D2D1_ROUNDED_RECT artRounded = D2D1::RoundedRect(artRect, 4.0f * dpiScale, 4.0f * dpiScale);
 
     if (m_pAlbumArtBitmap) {
-        // Draw album art clipped to rounded rect
         Microsoft::WRL::ComPtr<ID2D1RoundedRectangleGeometry> artGeom;
         if (SUCCEEDED(m_pD2DFactory->CreateRoundedRectangleGeometry(artRounded, &artGeom))) {
             Microsoft::WRL::ComPtr<ID2D1Layer> layer;
@@ -421,7 +457,6 @@ void Direct2DRenderer::Render(
             }
         }
     } else {
-        // Fallback placeholder with soft background and note icon
         m_pRenderTarget->FillRoundedRectangle(artRounded, m_pProgressBgBrush.Get());
         DrawNoteIcon(artRect);
     }
@@ -432,14 +467,13 @@ void Direct2DRenderer::Render(
     float btnGap = 2.0f * dpiScale;
     float btnsTotalW = 3.0f * btnWidth + 2.0f * btnGap;
 
-    float btnTop = barRect.top + (barHeight - btnHeight) * 0.5f;
+    float btnTop = barRect.top + (fBarHeight - btnHeight) * 0.5f;
     float btnPrevLeft = barRect.right - padding - btnsTotalW;
 
     m_rcBtnPrev = D2D1::RectF(btnPrevLeft, btnTop, btnPrevLeft + btnWidth, btnTop + btnHeight);
     m_rcBtnPlayPause = D2D1::RectF(m_rcBtnPrev.right + btnGap, btnTop, m_rcBtnPrev.right + btnGap + btnWidth, btnTop + btnHeight);
     m_rcBtnNext = D2D1::RectF(m_rcBtnPlayPause.right + btnGap, btnTop, m_rcBtnPlayPause.right + btnGap + btnWidth, btnTop + btnHeight);
 
-    // Draw buttons with hover backgrounds
     auto drawBtnHover = [&](const D2D1_RECT_F& r, ButtonType type) {
         if (hoveredBtn == type) {
             D2D1_ROUNDED_RECT hoverRect = D2D1::RoundedRect(r, 4.0f * dpiScale, 4.0f * dpiScale);
@@ -462,7 +496,7 @@ void Direct2DRenderer::Render(
 
     // 4. Spectrum Bars (Immediately to the left of buttons)
     float spectrumWidth = 36.0f * dpiScale;
-    float spectrumHeight = barHeight - 14.0f * dpiScale;
+    float spectrumHeight = fBarHeight - 14.0f * dpiScale;
     float spectrumLeft = m_rcBtnPrev.left - 6.0f * dpiScale - spectrumWidth;
     float spectrumBottom = barRect.bottom - 7.0f * dpiScale;
 
@@ -489,7 +523,6 @@ void Direct2DRenderer::Render(
         bool hasLyrics = showLyrics && !lyrics.lines.empty() && lyrics.activeIndex >= 0;
 
         if (hasLyrics) {
-            // Render active lyric line
             const auto& line = lyrics.lines[lyrics.activeIndex];
             D2D1_RECT_F lyricRect = D2D1::RectF(
                 middleLeft,
@@ -506,8 +539,7 @@ void Direct2DRenderer::Render(
                 m_pLyricHighlightBrush.Get()
             );
         } else {
-            // Render Title (top line) & Artist (bottom line)
-            float lineH = (barHeight - 10.0f * dpiScale) * 0.5f;
+            float lineH = (fBarHeight - 10.0f * dpiScale) * 0.5f;
 
             D2D1_RECT_F titleRect = D2D1::RectF(
                 middleLeft,
@@ -573,7 +605,21 @@ void Direct2DRenderer::Render(
     HRESULT hr = m_pRenderTarget->EndDraw();
     if (hr == D2DERR_RECREATE_TARGET) {
         DiscardDeviceResources();
+        return;
     }
+
+    // Direct hardware composite update to DWM via UpdateLayeredWindow
+    HDC hdcScreen = GetDC(nullptr);
+    POINT ptSrc{ 0, 0 };
+    SIZE sz{ static_cast<LONG>(m_width), static_cast<LONG>(m_height) };
+    BLENDFUNCTION blend{};
+    blend.BlendOp = AC_SRC_OVER;
+    blend.BlendFlags = 0;
+    blend.SourceConstantAlpha = 255;
+    blend.AlphaFormat = AC_SRC_ALPHA;
+
+    UpdateLayeredWindow(m_hWnd, hdcScreen, nullptr, &sz, m_hMemDC, &ptSrc, 0, &blend, ULW_ALPHA);
+    ReleaseDC(nullptr, hdcScreen);
 }
 
 } // namespace MusicBar
