@@ -168,7 +168,8 @@ void App::RepaintBar() {
         m_currentLyrics,
         m_currentSpectrum,
         m_hoveredBtn,
-        m_showLyrics
+        m_showLyrics,
+        m_isHovered
     );
 }
 
@@ -260,7 +261,7 @@ LRESULT App::HandleMessage(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         int mx = GET_X_LPARAM(lParam);
         int my = GET_Y_LPARAM(lParam);
 
-        ButtonType btn = m_renderer.HitTestButtons(mx, my);
+        ButtonType btn = m_isHovered ? m_renderer.HitTestButtons(mx, my) : ButtonType::None;
         if (btn == ButtonType::Prev) {
             m_mediaSession.PreviousTrack();
         } else if (btn == ButtonType::PlayPause) {
@@ -295,9 +296,19 @@ LRESULT App::HandleMessage(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             tme.hwndTrack = hWnd;
             TrackMouseEvent(&tme);
 
+            bool needRepaint = false;
+            if (!m_isHovered) {
+                m_isHovered = true;
+                needRepaint = true;
+            }
+
             ButtonType btn = m_renderer.HitTestButtons(mx, my);
             if (btn != m_hoveredBtn) {
                 m_hoveredBtn = btn;
+                needRepaint = true;
+            }
+
+            if (needRepaint) {
                 RepaintBar();
             }
         }
@@ -305,8 +316,16 @@ LRESULT App::HandleMessage(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     }
 
     case WM_MOUSELEAVE: {
+        bool needRepaint = false;
+        if (m_isHovered) {
+            m_isHovered = false;
+            needRepaint = true;
+        }
         if (m_hoveredBtn != ButtonType::None) {
             m_hoveredBtn = ButtonType::None;
+            needRepaint = true;
+        }
+        if (needRepaint) {
             RepaintBar();
         }
         return 0;

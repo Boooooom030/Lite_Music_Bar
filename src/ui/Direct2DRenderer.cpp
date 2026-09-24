@@ -308,6 +308,10 @@ void Direct2DRenderer::UpdateAlbumArt(const std::vector<uint8_t>& imageBytes) {
 }
 
 ButtonType Direct2DRenderer::HitTestButtons(int mouseX, int mouseY) const {
+    if (m_rcBtnPrev.right <= m_rcBtnPrev.left) {
+        return ButtonType::None;
+    }
+
     float mx = static_cast<float>(mouseX);
     float my = static_cast<float>(mouseY);
 
@@ -446,7 +450,8 @@ void Direct2DRenderer::Render(
     const LyricDocument& lyrics,
     const SpectrumData& spectrum,
     ButtonType hoveredBtn,
-    bool showLyrics
+    bool showLyrics,
+    bool isHovered
 ) {
     (void)screenPos;
     if (FAILED(CreateDeviceResources())) return;
@@ -516,45 +521,55 @@ void Direct2DRenderer::Render(
         DrawNoteIcon(artRect);
     }
 
-    // 3. Media Buttons (Right side: Prev, Play/Pause, Next)
-    float btnWidth = 20.0f * dpiScale;
-    float btnHeight = 20.0f * dpiScale;
-    float btnGap = 2.0f * dpiScale;
-    float btnsTotalW = 3.0f * btnWidth + 2.0f * btnGap;
-
-    float btnTop = barRect.top + (fBarHeight - btnHeight) * 0.5f;
-    float btnPrevLeft = barRect.right - padding - btnsTotalW;
-
-    m_rcBtnPrev = D2D1::RectF(btnPrevLeft, btnTop, btnPrevLeft + btnWidth, btnTop + btnHeight);
-    m_rcBtnPlayPause = D2D1::RectF(m_rcBtnPrev.right + btnGap, btnTop, m_rcBtnPrev.right + btnGap + btnWidth, btnTop + btnHeight);
-    m_rcBtnNext = D2D1::RectF(m_rcBtnPlayPause.right + btnGap, btnTop, m_rcBtnPlayPause.right + btnGap + btnWidth, btnTop + btnHeight);
-
-    auto drawBtnHover = [&](const D2D1_RECT_F& r, ButtonType type) {
-        if (hoveredBtn == type) {
-            D2D1_ROUNDED_RECT hoverRect = D2D1::RoundedRect(r, 4.0f * dpiScale, 4.0f * dpiScale);
-            m_pRenderTarget->FillRoundedRectangle(hoverRect, m_pBtnHoverBrush.Get());
-        }
-    };
-
-    drawBtnHover(m_rcBtnPrev, ButtonType::Prev);
-    DrawVectorPrev(m_rcBtnPrev);
-
-    drawBtnHover(m_rcBtnPlayPause, ButtonType::PlayPause);
-    if (track.isPlaying) {
-        DrawVectorPause(m_rcBtnPlayPause);
-    } else {
-        DrawVectorPlay(m_rcBtnPlayPause);
-    }
-
-    drawBtnHover(m_rcBtnNext, ButtonType::Next);
-    DrawVectorNext(m_rcBtnNext);
-
-    // 4. Spectrum Bars (Immediately to the left of buttons: 16 bands)
+    // 3. Media Buttons (Right side: Prev, Play/Pause, Next) - Shown only on hover
     float spectrumWidth = 36.0f * dpiScale;
     float spectrumHeight = fBarHeight - 14.0f * dpiScale;
-    float spectrumLeft = m_rcBtnPrev.left - 6.0f * dpiScale - spectrumWidth;
     float spectrumBottom = barRect.bottom - 7.0f * dpiScale;
+    float spectrumLeft = 0.0f;
 
+    if (isHovered) {
+        float btnWidth = 20.0f * dpiScale;
+        float btnHeight = 20.0f * dpiScale;
+        float btnGap = 2.0f * dpiScale;
+        float btnsTotalW = 3.0f * btnWidth + 2.0f * btnGap;
+
+        float btnTop = barRect.top + (fBarHeight - btnHeight) * 0.5f;
+        float btnPrevLeft = barRect.right - padding - btnsTotalW;
+
+        m_rcBtnPrev = D2D1::RectF(btnPrevLeft, btnTop, btnPrevLeft + btnWidth, btnTop + btnHeight);
+        m_rcBtnPlayPause = D2D1::RectF(m_rcBtnPrev.right + btnGap, btnTop, m_rcBtnPrev.right + btnGap + btnWidth, btnTop + btnHeight);
+        m_rcBtnNext = D2D1::RectF(m_rcBtnPlayPause.right + btnGap, btnTop, m_rcBtnPlayPause.right + btnGap + btnWidth, btnTop + btnHeight);
+
+        auto drawBtnHover = [&](const D2D1_RECT_F& r, ButtonType type) {
+            if (hoveredBtn == type) {
+                D2D1_ROUNDED_RECT hoverRect = D2D1::RoundedRect(r, 4.0f * dpiScale, 4.0f * dpiScale);
+                m_pRenderTarget->FillRoundedRectangle(hoverRect, m_pBtnHoverBrush.Get());
+            }
+        };
+
+        drawBtnHover(m_rcBtnPrev, ButtonType::Prev);
+        DrawVectorPrev(m_rcBtnPrev);
+
+        drawBtnHover(m_rcBtnPlayPause, ButtonType::PlayPause);
+        if (track.isPlaying) {
+            DrawVectorPause(m_rcBtnPlayPause);
+        } else {
+            DrawVectorPlay(m_rcBtnPlayPause);
+        }
+
+        drawBtnHover(m_rcBtnNext, ButtonType::Next);
+        DrawVectorNext(m_rcBtnNext);
+
+        spectrumLeft = m_rcBtnPrev.left - 6.0f * dpiScale - spectrumWidth;
+    } else {
+        m_rcBtnPrev = D2D1::RectF(0, 0, 0, 0);
+        m_rcBtnPlayPause = D2D1::RectF(0, 0, 0, 0);
+        m_rcBtnNext = D2D1::RectF(0, 0, 0, 0);
+
+        spectrumLeft = barRect.right - padding - spectrumWidth - 2.0f * dpiScale;
+    }
+
+    // 4. Spectrum Bars
     size_t numBands = SpectrumData::BAND_COUNT;
     float barGap = 1.0f * dpiScale;
     float singleBarW = (spectrumWidth - (numBands - 1) * barGap) / numBands;

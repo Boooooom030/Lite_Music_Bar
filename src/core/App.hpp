@@ -56,6 +56,7 @@ private:
     SpectrumData m_currentSpectrum;
 
     ButtonType m_hoveredBtn = ButtonType::None;
+    bool m_isHovered = false;
     bool m_isDragging = false;
     POINT m_dragStartPt{};
     int m_dragStartOffsetX = 0;

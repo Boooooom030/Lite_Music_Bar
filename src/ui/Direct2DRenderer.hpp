@@ -29,7 +29,8 @@ public:
         const LyricDocument& lyrics,
         const SpectrumData& spectrum,
         ButtonType hoveredBtn,
-        bool showLyrics
+        bool showLyrics,
+        bool isHovered
     );
 
     ButtonType HitTestButtons(int mouseX, int mouseY) const;
