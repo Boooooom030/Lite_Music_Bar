@@ -18,7 +18,10 @@ public:
 
     HWND GetTaskbarHwnd() const { return m_hTaskbar; }
     RECT GetTaskbarRect() const { return m_rcTaskbar; }
-    RECT GetBarRect() const { return m_rcBar; }
+    RECT GetBarRect() const { return RECT{ 0, 0, GetScaledWidth(), GetScaledHeight() }; }
+    POINT GetScreenPos() const { return POINT{ m_screenX, m_screenY }; }
+    int GetScaledWidth() const { return static_cast<int>(m_barWidth * GetDpiScale()); }
+    int GetScaledHeight() const { return static_cast<int>(m_barHeight * GetDpiScale()); }
     int GetDpi() const { return m_dpi; }
     float GetDpiScale() const { return m_dpi / 96.0f; }
     bool IsDocked() const { return m_isDocked; }
@@ -28,9 +31,10 @@ private:
     HWND m_hTaskbar = nullptr;
     HWND m_hTrayNotify = nullptr;
     RECT m_rcTaskbar{};
-    RECT m_rcBar{};
     int m_offsetX = -1; // -1 means auto-calculate default (left of tray)
-    int m_offsetY = 0;
+    int m_offsetY = -1;
+    int m_screenX = 0;
+    int m_screenY = 0;
     int m_barWidth = 280;
     int m_barHeight = 36;
     int m_dpi = 96;

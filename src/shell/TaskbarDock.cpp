@@ -37,33 +37,27 @@ bool TaskbarDock::Attach(HWND hAppWnd) {
         return false;
     }
 
-    // Set as child of Shell_TrayWnd
+    // Set owner to Shell_TrayWnd so it minimizes/hides with taskbar
+    SetWindowLongPtrW(m_hAppWnd, GWLP_HWNDPARENT, reinterpret_cast<LONG_PTR>(m_hTaskbar));
+
+    // Ensure Topmost popup styles
     LONG_PTR style = GetWindowLongPtrW(m_hAppWnd, GWL_STYLE);
-    style &= ~WS_POPUP;
-    style |= WS_CHILD | WS_CLIPSIBLINGS;
+    style &= ~WS_CHILD;
+    style |= WS_POPUP | WS_VISIBLE | WS_CLIPSIBLINGS;
     SetWindowLongPtrW(m_hAppWnd, GWL_STYLE, style);
 
     LONG_PTR exStyle = GetWindowLongPtrW(m_hAppWnd, GWL_EXSTYLE);
-    exStyle |= WS_EX_TOOLWINDOW;
+    exStyle |= WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE;
     exStyle &= ~WS_EX_APPWINDOW;
     SetWindowLongPtrW(m_hAppWnd, GWL_EXSTYLE, exStyle);
 
-    SetParent(m_hAppWnd, m_hTaskbar);
     m_isDocked = true;
-
     UpdateLayout();
     return true;
 }
 
 void TaskbarDock::Detach() {
-    if (m_isDocked && m_hAppWnd && IsWindow(m_hAppWnd)) {
-        SetParent(m_hAppWnd, nullptr);
-        LONG_PTR style = GetWindowLongPtrW(m_hAppWnd, GWL_STYLE);
-        style &= ~WS_CHILD;
-        style |= WS_POPUP;
-        SetWindowLongPtrW(m_hAppWnd, GWL_STYLE, style);
-        m_isDocked = false;
-    }
+    m_isDocked = false;
 }
 
 void TaskbarDock::UpdateLayout() {
@@ -72,6 +66,8 @@ void TaskbarDock::UpdateLayout() {
     RefreshTaskbarInfo();
     if (!m_hTaskbar) return;
 
+    int tbLeft = m_rcTaskbar.left;
+    int tbTop = m_rcTaskbar.top;
     int tbWidth = m_rcTaskbar.right - m_rcTaskbar.left;
     int tbHeight = m_rcTaskbar.bottom - m_rcTaskbar.top;
 
@@ -79,56 +75,57 @@ void TaskbarDock::UpdateLayout() {
     int scaledWidth = static_cast<int>(m_barWidth * scale);
     int scaledHeight = static_cast<int>(m_barHeight * scale);
 
-    // Calculate default X position (left of TrayNotifyWnd)
     int posX = 0;
-    int posY = (tbHeight - scaledHeight) / 2;
-    if (posY < 2) posY = 2;
+    int posY = tbTop + (tbHeight - scaledHeight) / 2;
 
     if (m_offsetX >= 0) {
         posX = m_offsetX;
-        posY = m_offsetY;
+        posY = (m_offsetY >= 0) ? m_offsetY : (tbTop + (tbHeight - scaledHeight) / 2);
     } else {
         if (m_hTrayNotify && IsWindow(m_hTrayNotify)) {
             RECT rcTray{};
             GetWindowRect(m_hTrayNotify, &rcTray);
-            int trayRelLeft = rcTray.left - m_rcTaskbar.left;
-            posX = trayRelLeft - scaledWidth - static_cast<int>(12 * scale);
+            posX = rcTray.left - scaledWidth - static_cast<int>(14 * scale);
         } else {
-            posX = tbWidth - scaledWidth - static_cast<int>(120 * scale);
+            posX = tbLeft + tbWidth - scaledWidth - static_cast<int>(200 * scale);
         }
     }
 
-    // Clamp coordinates within taskbar bounds
-    if (posX < 0) posX = 0;
-    if (posX + scaledWidth > tbWidth) posX = tbWidth - scaledWidth;
-    if (posY < 0) posY = 0;
-    if (posY + scaledHeight > tbHeight) posY = tbHeight - scaledHeight;
+    // Clamp coordinates within taskbar screen bounds
+    if (posX < tbLeft) posX = tbLeft;
+    if (posX + scaledWidth > tbLeft + tbWidth) posX = tbLeft + tbWidth - scaledWidth;
 
-    m_rcBar.left = posX;
-    m_rcBar.top = posY;
-    m_rcBar.right = posX + scaledWidth;
-    m_rcBar.bottom = posY + scaledHeight;
+    m_screenX = posX;
+    m_screenY = posY;
 
-    // Window must cover entire taskbar canvas for DWM / DirectComposition
-    SetWindowPos(m_hAppWnd, HWND_TOP, 0, 0, tbWidth, tbHeight, SWP_NOACTIVATE | SWP_SHOWWINDOW);
+    // Set position and size of the MusicBar window
+    SetWindowPos(
+        m_hAppWnd,
+        HWND_TOPMOST,
+        m_screenX,
+        m_screenY,
+        scaledWidth,
+        scaledHeight,
+        SWP_SHOWWINDOW | SWP_NOACTIVATE
+    );
 
-    // Apply region clipping strictly to the bar area so outside areas pass-through to taskbar
+    // Apply smooth rounded corner region
     ApplyWindowRegion();
 
     // Trigger repaint
     InvalidateRect(m_hAppWnd, nullptr, FALSE);
 }
 
-void TaskbarDock::SetBarOffset(int offsetX, int offsetY) {
-    m_offsetX = offsetX;
-    m_offsetY = offsetY;
+void TaskbarDock::SetBarOffset(int screenX, int screenY) {
+    m_offsetX = screenX;
+    m_offsetY = screenY;
     UpdateLayout();
 }
 
 void TaskbarDock::MoveBarDelta(int dx, int dy) {
     if (m_offsetX < 0) {
-        m_offsetX = m_rcBar.left;
-        m_offsetY = m_rcBar.top;
+        m_offsetX = m_screenX;
+        m_offsetY = m_screenY;
     }
     m_offsetX += dx;
     m_offsetY += dy;
@@ -138,17 +135,19 @@ void TaskbarDock::MoveBarDelta(int dx, int dy) {
 void TaskbarDock::ApplyWindowRegion() {
     if (!m_hAppWnd) return;
 
-    // Direct2D renders rounded corners smoothly, but Win32 region provides hit-testing boundary
+    int w = GetScaledWidth();
+    int h = GetScaledHeight();
+    float scale = GetDpiScale();
+
     HRGN hRgn = CreateRoundRectRgn(
-        m_rcBar.left,
-        m_rcBar.top,
-        m_rcBar.right + 1,
-        m_rcBar.bottom + 1,
-        static_cast<int>(10 * GetDpiScale()),
-        static_cast<int>(10 * GetDpiScale())
+        0,
+        0,
+        w + 1,
+        h + 1,
+        static_cast<int>(8 * scale),
+        static_cast<int>(8 * scale)
     );
 
-    // SetWindowRgn takes ownership of hRgn on success
     if (!SetWindowRgn(m_hAppWnd, hRgn, TRUE)) {
         DeleteObject(hRgn);
     }

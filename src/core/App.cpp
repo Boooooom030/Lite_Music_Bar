@@ -60,13 +60,13 @@ bool App::Initialize(HINSTANCE hInstance) {
 
     m_msgTaskbarCreated = RegisterWindowMessageW(L"TaskbarCreated");
 
-    // Create host window
+    // Create host window with Topmost popup styles
     m_hWnd = CreateWindowExW(
-        WS_EX_TOOLWINDOW,
+        WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
         L"MusicBar_Taskbar_Host",
         L"MusicBar",
-        WS_POPUP | WS_CLIPSIBLINGS,
-        0, 0, 100, 100,
+        WS_POPUP | WS_VISIBLE | WS_CLIPSIBLINGS,
+        0, 0, 280, 36,
         nullptr,
         nullptr,
         hInstance,
@@ -75,13 +75,13 @@ bool App::Initialize(HINSTANCE hInstance) {
 
     if (!m_hWnd) return false;
 
-    // Initialize Direct2D
+    // Dock to taskbar to compute initial layout & position
+    m_dock.Attach(m_hWnd);
+
+    // Initialize Direct2D with docked geometry
     if (!m_renderer.Initialize(m_hWnd)) {
         return false;
     }
-
-    // Dock to taskbar
-    m_dock.Attach(m_hWnd);
 
     // Start WASAPI audio capture
     m_audio.Start();
@@ -233,9 +233,9 @@ LRESULT App::HandleMessage(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             m_isDragging = true;
             SetCapture(hWnd);
             GetCursorPos(&m_dragStartPt);
-            RECT r = m_dock.GetBarRect();
-            m_dragStartOffsetX = r.left;
-            m_dragStartOffsetY = r.top;
+            POINT cur = m_dock.GetScreenPos();
+            m_dragStartOffsetX = cur.x;
+            m_dragStartOffsetY = cur.y;
         }
         return 0;
     }
