@@ -701,11 +701,6 @@ LRESULT App::HandleMessage(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                 !(settingsAttributes & FILE_ATTRIBUTE_DIRECTORY);
             m_trayIcon.ShowContextMenu(hWnd, pt.x, pt.y, m_currentLyricsSource,
                 m_showLyrics, m_isVisible, m_positionLocked, settingsAvailable);
-        } else if (lParam == WM_LBUTTONDBLCLK) {
-            m_isVisible = !m_isVisible;
-            if (!m_isVisible) m_volumePopup.Hide();
-            ShowWindow(hWnd, m_isVisible ? SW_SHOW : SW_HIDE);
-            if (m_isVisible) RepaintBar();
         }
         return 0;
     }
