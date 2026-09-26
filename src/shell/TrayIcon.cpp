@@ -51,7 +51,8 @@ void TrayIcon::ShowContextMenu(
     int y,
     int currentSource,
     bool showLyrics,
-    bool isVisible
+    bool isVisible,
+    bool positionLocked
 ) {
     HMENU hMenu = CreatePopupMenu();
     if (!hMenu) return;
@@ -60,6 +61,8 @@ void TrayIcon::ShowContextMenu(
     AppendMenuW(hMenu, MF_STRING, IDM_SHOW_HIDE, isVisible ? L"隐藏任务栏栏目 (Hide)" : L"显示任务栏栏目 (Show)");
     AppendMenuW(hMenu, MF_STRING | (showLyrics ? MF_CHECKED : MF_UNCHECKED), IDM_TOGGLE_LYRICS, L"开启歌词显示 (Show Lyrics)");
     AppendMenuW(hMenu, MF_STRING, IDM_REDOCK, L"重新停靠任务栏 (Re-dock Taskbar)");
+    AppendMenuW(hMenu, MF_STRING | (positionLocked ? MF_CHECKED : MF_UNCHECKED),
+        IDM_LOCK_POSITION, L"锁定位置 (Lock Position)");
     AppendMenuW(hMenu, MF_SEPARATOR, 0, nullptr);
 
     // 2. Lyrics Source Submenu
@@ -68,7 +71,8 @@ void TrayIcon::ShowContextMenu(
     AppendMenuW(hSourceSubMenu, MF_STRING | (currentSource == 1 ? MF_CHECKED : MF_UNCHECKED), IDM_SOURCE_NETEASE, L"网易云音乐 (NetEase)");
     AppendMenuW(hSourceSubMenu, MF_STRING | (currentSource == 2 ? MF_CHECKED : MF_UNCHECKED), IDM_SOURCE_QQ, L"QQ音乐 (QQ Music)");
     AppendMenuW(hSourceSubMenu, MF_STRING | (currentSource == 3 ? MF_CHECKED : MF_UNCHECKED), IDM_SOURCE_KUGOU, L"酷狗音乐 (Kugou)");
-    AppendMenuW(hSourceSubMenu, MF_STRING | (currentSource == 4 ? MF_CHECKED : MF_UNCHECKED), IDM_SOURCE_LRCLIB, L"LRCLIB (欧美歌词)");
+    AppendMenuW(hSourceSubMenu, MF_STRING | (currentSource == 4 ? MF_CHECKED : MF_UNCHECKED), IDM_SOURCE_SODA, L"汽水音乐 (Soda)");
+    AppendMenuW(hSourceSubMenu, MF_STRING | (currentSource == 5 ? MF_CHECKED : MF_UNCHECKED), IDM_SOURCE_LRCLIB, L"LRCLIB (欧美歌词)");
     AppendMenuW(hMenu, MF_POPUP, reinterpret_cast<UINT_PTR>(hSourceSubMenu), L"歌词源选择 (Lyrics Source)");
 
     AppendMenuW(hMenu, MF_SEPARATOR, 0, nullptr);

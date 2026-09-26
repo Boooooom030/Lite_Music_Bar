@@ -12,7 +12,7 @@
    - The binary must be 100% self-contained native code (`.exe`).
    - Do NOT introduce bulky runtime frameworks (.NET, Electron, Qt, or heavy C++ GUI kits).
    - Use Windows built-in system libraries: Direct2D (`d2d1`), DirectWrite (`dwrite`), WIC (`windowscodecs`), WinHTTP (`winhttp`), BCrypt (`bcrypt`), WASAPI (`mmdeviceapi`), and C++/WinRT (`windowsapp`).
-2. **Lightweight & High Performance**:
+2. **Lightweight & High Performance** (targets; verify measurements before claiming them):
    - Memory footprint target: **< 15 MB RAM** in steady-state operation.
    - Binary size target: **< 2.5 MB** release executable.
    - CPU usage: **< 0.1%** during 60 FPS audio spectrum playback; **0.0%** when paused/idle.
@@ -27,40 +27,26 @@
 
 ```
 MusicBar/
-├── CMakeLists.txt                # Root CMake project configuration
-├── AGENTS.md                     # This agent guide
-├── PLAN.md                       # Comprehensive architectural design plan
-├── TODO.md                       # Phase-by-phase task tracking checklist
-├── assets/
-│   ├── app.manifest              # Per-Monitor V2 DPI and Win10/11 compatibility
-│   └── icon.ico                  # Application & system tray icon
-├── third_party/
-│   ├── nlohmann/json.hpp         # Fast, modern C++ JSON library (single header)
-│   └── miniz/miniz.h / .c        # Single-file zlib/deflate decompressor
-└── src/
-    ├── main.cpp                  # WinMain entry point, single-instance mutex
-    ├── core/
-    │   ├── App.hpp / .cpp        # Application coordinator, message pump
-    │   └── Types.hpp             # Shared structs (MediaInfo, LyricsData, SpectrumData)
-    ├── shell/
-    │   ├── TaskbarDock.hpp / .cpp# Win32 taskbar discovery, SetParent, SetWindowRgn
-    │   └── TrayIcon.hpp / .cpp   # Shell_NotifyIconW, context menu
-    ├── media/
-    │   └── MediaSession.hpp / .cpp # C++/WinRT GSMTC transport listener & controls
-    ├── audio/
-    │   ├── WasapiLoopback.hpp / .cpp # WASAPI loopback audio stream capture
-    │   └── FftAnalyzer.hpp / .cpp    # 1024-point FFT, Hann window, 16/24 band physics
-    ├── lyrics/
-    │   ├── LyricsService.hpp / .cpp  # Query orchestrator, LRU cache, timeline sync
-    │   ├── LyricsParser.hpp / .cpp   # LRC line & KRC/QRC/YRC syllable parser
-    │   ├── Decrypter.hpp / .cpp      # Kugou KRC (XOR+inflate), QQ QRC (3DES+inflate)
-    │   └── providers/                # NetEase, QQ, Kugou, Soda, LRCLIB providers
-    ├── ui/
-    │   ├── Direct2DRenderer.hpp / .cpp # Direct2D 1.1, DirectWrite, WIC rendering
-    │   ├── Layout.hpp                # Coordinate geometry and DPI calculations
-    │   └── ImageLoader.hpp / .cpp    # WIC stream to ID2D1Bitmap decoder
-    └── net/
-        └── HttpClient.hpp / .cpp     # WinHTTP asynchronous client
+├── CMakeLists.txt
+├── README.md                      # User guide and build instructions
+├── AGENTS.md                      # This contributor guide
+├── .github/workflows/            # Windows build, tests, and release packaging
+├── assets/                        # Icon, manifest, resource script, screenshot
+├── docs/
+│   ├── ARCHITECTURE.md            # Current implementation and module map
+│   ├── ROADMAP.md                 # Outstanding work and manual verification
+│   ├── SETTINGS_GUI.md            # Future settings-process evaluation
+│   └── THIRD_PARTY.md            # Vendored dependencies and licenses
+├── src/
+│   ├── core/                      # App coordinator and shared types
+│   ├── shell/                     # Taskbar docking and tray
+│   ├── media/                     # GSMTC, NetEase source, process resolution
+│   ├── audio/                     # WASAPI, FFT, volume, output devices
+│   ├── lyrics/                    # Service, parsing, providers
+│   ├── ui/                        # Direct2D, images, lyric scroll, popup
+│   └── net/                       # WinHTTP
+├── tests/                         # CTest regression tests
+└── third_party/                   # nlohmann/json and miniz
 ```
 
 ---
@@ -76,16 +62,19 @@ MusicBar/
 
 ```powershell
 # 1. Generate CMake build tree with MSVC (from repository root)
-cmake -B build -G "Visual Studio 18 2026" -A x64
+cmake -S . -B build-vs -G "Visual Studio 17 2022" -A x64 -DBUILD_TESTING=ON
 
-# Alternatively, using Ninja if available:
-# cmake -B build -G "Ninja" -DCMAKE_BUILD_TYPE=Release
+# With Visual Studio 2026, use its x64 Native Tools Command Prompt and Ninja:
+# cmake -S . -B build-ninja -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
+# cmake --build build-ninja --parallel
+# ctest --test-dir build-ninja --output-on-failure
 
 # 2. Compile Release executable
-cmake --build build --config Release --parallel
+cmake --build build-vs --config Release --parallel
+ctest --test-dir build-vs -C Release --output-on-failure
 
 # 3. Output executable location
-# .\build\Release\MusicBar.exe
+# .\build-vs\Release\MusicBar.exe
 ```
 
 ---
@@ -112,7 +101,7 @@ cmake --build build --config Release --parallel
 ## 5. Agent Workflow for Subsequent Tasks
 
 When making code edits or expanding features:
-1. Always consult [PLAN.md](file:///C:/Users/huban/Storage/tool/Musci_Bar/PLAN.md) for architectural alignment and [TODO.md](file:///C:/Users/huban/Storage/tool/Musci_Bar/TODO.md) for progress tracking.
+1. Consult [architecture](docs/ARCHITECTURE.md) for the current design and [roadmap](docs/ROADMAP.md) for outstanding work.
 2. Maintain clean separation of concerns: UI rendering stays in `ui/`, audio in `audio/`, networking in `net/`, and media in `media/`.
-3. Test builds with `cmake --build build --config Release` to ensure zero compilation errors and warnings.
-4. After verifying new components, check off the corresponding items in [TODO.md](file:///C:/Users/huban/Storage/tool/Musci_Bar/TODO.md).
+3. Build with `cmake --build build-vs --config Release` and run CTest. Keep warnings visible and fix new warnings.
+4. After verifying new components, update [ROADMAP.md](docs/ROADMAP.md) as appropriate.

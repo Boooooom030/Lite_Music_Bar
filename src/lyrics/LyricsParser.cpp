@@ -11,7 +11,7 @@ bool LyricsParser::TryParseSyllableLine(
     LyricLine& outLine
 ) {
     // Matches line timestamp [startMs,durMs]
-    // Followed by syllables: <startOffset,dur,0>Word or (startOffset,dur,0)Word
+    // Syllable timestamps may be offsets (KRC) or absolute song times (YRC).
     static const std::wregex lineHeaderRegex(LR"(^\[(\d+),(\d+)\])");
     std::wsmatch match;
 
@@ -37,12 +37,24 @@ bool LyricsParser::TryParseSyllableLine(
         std::wstring sylText = sylMatch[5].str();
 
         LyricSyllable syl{};
-        syl.startMs = outLine.startMs + sylOffset;
+        syl.startMs = sylOffset;
         syl.durationMs = sylDur;
         syl.text = sylText;
 
         outLine.syllables.push_back(syl);
         outLine.text += sylText;
+    }
+
+    if (!outLine.syllables.empty()) {
+        const int64_t firstTime = outLine.syllables.front().startMs;
+        const bool absoluteTimes = outLine.startMs > 0 &&
+            firstTime >= outLine.startMs &&
+            firstTime <= outLine.startMs + std::max<int64_t>(outLine.durationMs, 1000);
+        if (!absoluteTimes) {
+            for (auto& syllable : outLine.syllables) {
+                syllable.startMs += outLine.startMs;
+            }
+        }
     }
 
     return !outLine.syllables.empty() || !outLine.text.empty();

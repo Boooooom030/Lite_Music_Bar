@@ -5,7 +5,10 @@
 #include <memory>
 #include <map>
 #include <mutex>
+#include <condition_variable>
 #include <functional>
+#include <optional>
+#include <thread>
 #include "core/Types.hpp"
 #include "providers/ILyricsProvider.hpp"
 
@@ -33,6 +36,14 @@ public:
     void Clear();
 
 private:
+    struct Request {
+        uint64_t generation;
+        std::wstring title;
+        std::wstring artist;
+        int64_t durationMs;
+        LyricsSource source;
+    };
+
     LyricsLoadedCallback m_callback;
     std::vector<std::unique_ptr<ILyricsProvider>> m_providers;
     std::map<std::wstring, LyricDocument> m_cache;
@@ -40,8 +51,14 @@ private:
     mutable std::mutex m_docMutex;
 
     LyricDocument m_currentDoc;
-    std::wstring m_currentKey;
     uint64_t m_queryGeneration = 0;
+    std::mutex m_requestMutex;
+    std::condition_variable m_requestReady;
+    std::optional<Request> m_pendingRequest;
+    std::thread m_fetchThread;
+    bool m_stopping = false;
+
+    void WorkerLoop();
 
     void FetchWorker(
         uint64_t gen,

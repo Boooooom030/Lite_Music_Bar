@@ -2,6 +2,7 @@
 
 #include <windows.h>
 #include <cstdint>
+#include <algorithm>
 
 namespace MusicBar {
 
@@ -18,17 +19,17 @@ public:
 
     HWND GetTaskbarHwnd() const { return m_hTaskbar; }
     RECT GetTaskbarRect() const { return m_rcTaskbar; }
-    RECT GetBarRect() const { return RECT{ 0, 0, GetScaledWidth(), GetScaledHeight() }; }
+    RECT GetBarRect() const { return RECT{ m_relX, m_relY, m_relX + GetScaledWidth(), m_relY + GetScaledHeight() }; }
     POINT GetScreenPos() const { return POINT{ m_rcTaskbar.left + m_relX, m_rcTaskbar.top + m_relY }; }
     POINT GetRelativePos() const { return POINT{ m_relX, m_relY }; }
-    int GetScaledWidth() const { return static_cast<int>(m_barWidth * GetDpiScale()); }
-    int GetScaledHeight() const {
-        int h = m_rcTaskbar.bottom - m_rcTaskbar.top;
-        return (h > 0) ? h : static_cast<int>(m_barHeight * GetDpiScale());
-    }
+    int GetScaledWidth() const { return m_effectiveWidth; }
+    int GetScaledHeight() const { return m_rcTaskbar.bottom - m_rcTaskbar.top; }
     int GetDpi() const { return m_dpi; }
     float GetDpiScale() const { return m_dpi / 96.0f; }
-    bool IsDocked() const { return m_isDocked; }
+    bool IsDocked() const {
+        return m_isDocked && m_hAppWnd && m_hTaskbar &&
+            IsWindow(m_hTaskbar) && GetParent(m_hAppWnd) == m_hTaskbar && m_regionApplied;
+    }
 
 private:
     HWND m_hAppWnd = nullptr;
@@ -39,9 +40,13 @@ private:
     int m_relX = 0;
     int m_relY = 0;
     int m_barWidth = 300;
-    int m_barHeight = 48;
+    int m_effectiveWidth = 300;
     int m_dpi = 96;
     bool m_isDocked = false;
+    int m_canvasWidth = 0;
+    int m_canvasHeight = 0;
+    RECT m_appliedRegion{};
+    bool m_regionApplied = false;
 
     void RefreshTaskbarInfo();
 };

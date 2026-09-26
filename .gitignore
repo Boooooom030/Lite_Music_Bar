@@ -1,5 +1,5 @@
 # CMake build output
-build/
+build*/
 bin/
 out/
 
@@ -17,10 +17,6 @@ out/
 *.exp
 *.ilk
 *.pdb
-
-# Legacy C# artifacts
-MusicBar/bin/
-MusicBar/obj/
 
 # IDE files
 .vscode/

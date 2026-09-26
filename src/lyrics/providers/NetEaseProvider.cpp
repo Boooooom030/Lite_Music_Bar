@@ -1,6 +1,7 @@
 #include "NetEaseProvider.hpp"
 #include "lyrics/Decrypter.hpp"
 #include "lyrics/LyricsParser.hpp"
+#include "net/HttpClient.hpp"
 #include <nlohmann/json.hpp>
 
 namespace MusicBar {
@@ -23,44 +24,58 @@ std::optional<LyricDocument> NetEaseProvider::FetchLyrics(
         { L"Referer", L"https://music.163.com/" }
     };
 
-    auto searchResp = m_http.Post(
+    HttpClient http;
+    auto searchResp = http.Post(
         L"https://music.163.com/api/search/get/web",
         postData,
         L"application/x-www-form-urlencoded",
         headers
     );
 
-    if (!searchResp.success) return std::nullopt;
+    if (!searchResp.success || searchResp.body.size() > 2 * 1024 * 1024) {
+        return std::nullopt;
+    }
 
     auto searchJson = nlohmann::json::parse(searchResp.body, nullptr, false);
-    if (searchJson.is_discarded() || !searchJson.contains("result")) return std::nullopt;
+    if (!searchJson.is_object() || !searchJson.contains("result")) return std::nullopt;
 
     const auto& result = searchJson["result"];
     if (!result.contains("songs") || !result["songs"].is_array() || result["songs"].empty()) {
         return std::nullopt;
     }
 
-    int64_t songId = result["songs"][0]["id"].get<int64_t>();
+    const auto& song = result["songs"][0];
+    if (!song.is_object() || !song.contains("id") ||
+        !song["id"].is_number_integer()) return std::nullopt;
+    const int64_t songId = song["id"].get<int64_t>();
 
     // Query lyrics
     std::wstring lyricUrl = L"https://music.163.com/api/song/lyric?id=" + std::to_wstring(songId) + L"&lv=1&kv=1&tv=1&yv=1";
-    auto lyricResp = m_http.Get(lyricUrl, headers);
-    if (!lyricResp.success) return std::nullopt;
+    auto lyricResp = http.Get(lyricUrl, headers);
+    if (!lyricResp.success || lyricResp.body.size() > 4 * 1024 * 1024) {
+        return std::nullopt;
+    }
 
     auto lyricJson = nlohmann::json::parse(lyricResp.body, nullptr, false);
-    if (lyricJson.is_discarded()) return std::nullopt;
+    if (!lyricJson.is_object()) return std::nullopt;
 
     std::string mainLyric;
     std::string transLyric;
 
     // Prefer syllable-level YRC if available
-    if (lyricJson.contains("yrc") && lyricJson["yrc"].contains("lyric")) {
+    if (lyricJson.contains("yrc") && lyricJson["yrc"].is_object() &&
+        lyricJson["yrc"].contains("lyric") &&
+        lyricJson["yrc"]["lyric"].is_string()) {
         mainLyric = lyricJson["yrc"]["lyric"].get<std::string>();
-    } else if (lyricJson.contains("lrc") && lyricJson["lrc"].contains("lyric")) {
+    } else if (lyricJson.contains("lrc") && lyricJson["lrc"].is_object() &&
+        lyricJson["lrc"].contains("lyric") &&
+        lyricJson["lrc"]["lyric"].is_string()) {
         mainLyric = lyricJson["lrc"]["lyric"].get<std::string>();
     }
 
-    if (lyricJson.contains("tlyric") && lyricJson["tlyric"].contains("lyric")) {
+    if (lyricJson.contains("tlyric") && lyricJson["tlyric"].is_object() &&
+        lyricJson["tlyric"].contains("lyric") &&
+        lyricJson["tlyric"]["lyric"].is_string()) {
         transLyric = lyricJson["tlyric"]["lyric"].get<std::string>();
     }
 

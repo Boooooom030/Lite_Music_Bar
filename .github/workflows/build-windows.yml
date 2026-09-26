@@ -1,0 +1,68 @@
+name: Build Windows x64
+
+on:
+  push:
+    branches: [master, main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-2022
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Configure
+        run: cmake -S . -B build-ci -G "Visual Studio 17 2022" -A x64 -DBUILD_TESTING=ON
+
+      - name: Build Release
+        run: cmake --build build-ci --config Release --parallel
+
+      - name: Test
+        run: ctest --test-dir build-ci -C Release --output-on-failure
+
+      - name: Package the executable
+        shell: pwsh
+        run: |
+          $exe = 'build-ci/Release/MusicBar.exe'
+          if (-not (Test-Path -LiteralPath $exe)) { throw "Missing $exe" }
+          New-Item -ItemType Directory -Path 'release/package/licenses' -Force | Out-Null
+          Copy-Item -LiteralPath $exe -Destination 'release/package/MusicBar.exe'
+          Copy-Item -LiteralPath 'third_party/nlohmann/LICENSE.MIT' -Destination 'release/package/licenses/nlohmann-json.MIT.txt'
+          Copy-Item -LiteralPath 'third_party/miniz/LICENSE.MIT' -Destination 'release/package/licenses/miniz.MIT.txt'
+          Compress-Archive -Path 'release/package/*' -DestinationPath 'release/MusicBar-Windows-x64.zip' -Force
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: MusicBar-Windows-x64
+          path: release/MusicBar-Windows-x64.zip
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download build artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: MusicBar-Windows-x64
+          path: release
+
+      - name: Publish release asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" release/MusicBar-Windows-x64.zip --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" release/MusicBar-Windows-x64.zip --verify-tag --generate-notes
+          fi

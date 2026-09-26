@@ -3,7 +3,7 @@
 
 namespace MusicBar {
 
-HttpClient::HttpClient() {
+HttpClient::HttpClient(int timeoutMs) {
     m_hSession = WinHttpOpen(
         L"MusicBar/1.0 (Windows NT 10.0; Win64; x64)",
         WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
@@ -17,8 +17,8 @@ HttpClient::HttpClient() {
         DWORD protocols = WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_2 | WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_3;
         WinHttpSetOption(m_hSession, WINHTTP_OPTION_SECURE_PROTOCOLS, &protocols, sizeof(protocols));
 
-        // Timeouts: resolve, connect, send, receive (all 5 seconds)
-        WinHttpSetTimeouts(m_hSession, 5000, 5000, 5000, 5000);
+        // Lyrics use the default timeout; small cover requests can fail sooner.
+        WinHttpSetTimeouts(m_hSession, timeoutMs, timeoutMs, timeoutMs, timeoutMs);
     }
 }
 
@@ -140,23 +140,33 @@ HttpResponse HttpClient::Request(
 
         // Read response body
         DWORD dwSize = 0;
+        bool readComplete = true;
         do {
             dwSize = 0;
             if (!WinHttpQueryDataAvailable(hRequest, &dwSize)) {
+                readComplete = false;
                 break;
             }
 
             if (dwSize > 0) {
                 std::vector<char> buffer(dwSize);
                 DWORD dwDownloaded = 0;
-                if (WinHttpReadData(hRequest, buffer.data(), dwSize, &dwDownloaded)) {
-                    response.rawBytes.insert(response.rawBytes.end(), buffer.begin(), buffer.begin() + dwDownloaded);
+                if (!WinHttpReadData(hRequest, buffer.data(), dwSize, &dwDownloaded) ||
+                    dwDownloaded == 0) {
+                    readComplete = false;
+                    break;
                 }
+                response.rawBytes.insert(response.rawBytes.end(),
+                    buffer.begin(), buffer.begin() + dwDownloaded);
             }
         } while (dwSize > 0);
 
-        response.body.assign(reinterpret_cast<const char*>(response.rawBytes.data()), response.rawBytes.size());
-        response.success = (response.statusCode >= 200 && response.statusCode < 400);
+        if (!response.rawBytes.empty()) {
+            response.body.assign(reinterpret_cast<const char*>(response.rawBytes.data()),
+                response.rawBytes.size());
+        }
+        response.success = readComplete && response.statusCode >= 200 &&
+            response.statusCode < 300;
     }
 
     WinHttpCloseHandle(hRequest);

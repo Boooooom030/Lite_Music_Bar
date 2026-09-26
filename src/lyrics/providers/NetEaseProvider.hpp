@@ -1,7 +1,6 @@
 #pragma once
 
 #include "ILyricsProvider.hpp"
-#include "net/HttpClient.hpp"
 
 namespace MusicBar {
 
@@ -15,8 +14,6 @@ public:
         int64_t durationMs
     ) override;
 
-private:
-    HttpClient m_http;
 };
 
 } // namespace MusicBar

@@ -9,6 +9,7 @@
 #include "audio/WasapiLoopback.hpp"
 #include "lyrics/LyricsService.hpp"
 #include "ui/Direct2DRenderer.hpp"
+#include "ui/VolumePopup.hpp"
 
 namespace MusicBar {
 
@@ -21,6 +22,16 @@ public:
     int Run();
 
 private:
+    enum class PressTarget {
+        None,
+        Background,
+        Cover,
+        OutputDevice,
+        Previous,
+        Next,
+        Spectrum
+    };
+
     static LRESULT CALLBACK StaticWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
     static void CALLBACK StaticWinEventProc(
         HWINEVENTHOOK hWinEventHook,
@@ -35,6 +46,8 @@ private:
     LRESULT HandleMessage(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
     void RepaintBar();
+    RECT GetSpectrumScreenRect() const;
+    void ShowOutputDeviceMenu();
 
     static inline App* s_pInstance = nullptr;
 
@@ -46,6 +59,7 @@ private:
 
     TaskbarDock m_dock;
     Direct2DRenderer m_renderer;
+    VolumePopup m_volumePopup;
     MediaSession m_mediaSession;
     WasapiLoopback m_audio;
     LyricsService m_lyrics;
@@ -54,16 +68,25 @@ private:
     MediaTrackInfo m_currentTrack;
     LyricDocument m_currentLyrics;
     SpectrumData m_currentSpectrum;
+    std::chrono::steady_clock::time_point m_lastAudioActivity{};
 
     ButtonType m_hoveredBtn = ButtonType::None;
     bool m_isHovered = false;
+    bool m_isCoverHovered = false;
     bool m_isDragging = false;
+    PressTarget m_pressTarget = PressTarget::None;
+    bool m_suppressClickOnRelease = false;
+    bool m_outputMenuOpen = false;
     POINT m_dragStartPt{};
     int m_dragStartOffsetX = 0;
 
     bool m_isVisible = true;
+    bool m_positionLocked = false;
     bool m_showLyrics = true;
     int m_currentLyricsSource = 0;
+    LyricsSource m_lastRequestedLyricsSource = LyricsSource::Auto;
+
+    LyricsSource EffectiveLyricsSource() const;
 
     void OnTrackChanged(const MediaTrackInfo& track);
     void OnLyricsLoaded(const LyricDocument& doc);

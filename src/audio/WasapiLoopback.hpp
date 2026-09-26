@@ -12,6 +12,8 @@
 
 namespace MusicBar {
 
+enum class AudioCaptureMode { PlayerProcess, SystemMix };
+
 class WasapiLoopback {
 public:
     WasapiLoopback();
@@ -20,11 +22,17 @@ public:
     bool Start();
     void Stop();
     bool IsRunning() const { return m_isRunning; }
+    void SetCaptureMode(AudioCaptureMode mode);
+    void SetTargetProcess(DWORD processId);
+    AudioCaptureMode GetCaptureMode() const { return m_captureMode.load(); }
 
     SpectrumData GetSpectrum();
 
 private:
     std::atomic<bool> m_isRunning{false};
+    std::atomic<AudioCaptureMode> m_captureMode{AudioCaptureMode::PlayerProcess};
+    std::atomic<DWORD> m_targetProcessId{0};
+    std::atomic<uint64_t> m_configGeneration{0};
     std::thread m_captureThread;
 
     Microsoft::WRL::ComPtr<IAudioClient> m_pAudioClient;

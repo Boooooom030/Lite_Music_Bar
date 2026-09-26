@@ -22,8 +22,8 @@ void TaskbarDock::RefreshTaskbarInfo() {
     if (hUser32) {
         using GetDpiForWindowFunc = UINT(WINAPI*)(HWND);
         auto pGetDpiForWindow = reinterpret_cast<GetDpiForWindowFunc>(GetProcAddress(hUser32, "GetDpiForWindow"));
-        if (pGetDpiForWindow && m_hAppWnd) {
-            UINT dpi = pGetDpiForWindow(m_hAppWnd);
+        if (pGetDpiForWindow) {
+            UINT dpi = pGetDpiForWindow(m_hTaskbar);
             if (dpi > 0) m_dpi = dpi;
         }
     }
@@ -49,9 +49,14 @@ bool TaskbarDock::Attach(HWND hAppWnd) {
     SetWindowLongPtrW(m_hAppWnd, GWL_STYLE, style);
 
     // Dock as direct child of the taskbar (Shell_TrayWnd)
-    SetParent(m_hAppWnd, m_hTaskbar);
+    SetLastError(0);
+    HWND previousParent = SetParent(m_hAppWnd, m_hTaskbar);
+    if (!previousParent && GetLastError() != 0) return false;
 
     m_isDocked = true;
+    m_canvasWidth = 0;
+    m_canvasHeight = 0;
+    m_regionApplied = false;
     UpdateLayout();
     return true;
 }
@@ -77,42 +82,62 @@ void TaskbarDock::UpdateLayout() {
     int tbHeight = m_rcTaskbar.bottom - m_rcTaskbar.top;
 
     float scale = GetDpiScale();
-    int scaledWidth = static_cast<int>(m_barWidth * scale);
     int scaledHeight = tbHeight;
-
-    // Fill the full vertical height of the taskbar: zero top/bottom gaps!
     m_relY = 0;
+
+    // Keep the bar before the notification area on narrow or high-DPI taskbars.
+    int trayRelLeft = tbWidth;
+    if (m_hTrayNotify && IsWindow(m_hTrayNotify)) {
+        RECT rcTray{};
+        if (GetWindowRect(m_hTrayNotify, &rcTray)) {
+            trayRelLeft = rcTray.left - m_rcTaskbar.left;
+        }
+    }
+    int desiredWidth = static_cast<int>(m_barWidth * scale);
+    int trayGap = static_cast<int>(12 * scale);
+    int leftMargin = static_cast<int>(8 * scale);
+    int availableWidth = std::max(1, trayRelLeft - trayGap - leftMargin);
+    int screenShareLimit = std::max(1, static_cast<int>(tbWidth * 0.34f));
+    int scaledWidth = std::min(desiredWidth, std::min(screenShareLimit, availableWidth));
+    m_effectiveWidth = scaledWidth;
 
     int posX = 0;
     if (m_offsetX >= 0) {
         posX = m_offsetX;
     } else {
-        if (m_hTrayNotify && IsWindow(m_hTrayNotify)) {
-            RECT rcTray{};
-            GetWindowRect(m_hTrayNotify, &rcTray);
-            int trayRelLeft = rcTray.left - m_rcTaskbar.left;
-            posX = trayRelLeft - scaledWidth - static_cast<int>(12 * scale);
-        } else {
-            posX = tbWidth - scaledWidth - static_cast<int>(200 * scale);
-        }
+        posX = trayRelLeft - scaledWidth - trayGap;
     }
 
     // Clamp horizontally strictly inside taskbar boundaries
     if (posX < 0) posX = 0;
-    if (posX + scaledWidth > tbWidth) posX = tbWidth - scaledWidth;
+    if (posX + scaledWidth > tbWidth) posX = std::max(0, tbWidth - scaledWidth);
 
     m_relX = posX;
 
-    // Set position within Shell_TrayWnd client coordinates
-    SetWindowPos(
-        m_hAppWnd,
-        HWND_TOP,
-        m_relX,
-        m_relY,
-        scaledWidth,
-        scaledHeight,
-        SWP_SHOWWINDOW | SWP_NOACTIVATE
-    );
+    // The child covers the taskbar canvas. Only the rounded bar region receives input.
+    if (m_canvasWidth != tbWidth || m_canvasHeight != tbHeight) {
+        SetWindowPos(m_hAppWnd, HWND_TOP, 0, 0, tbWidth, tbHeight,
+            SWP_SHOWWINDOW | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+        m_canvasWidth = tbWidth;
+        m_canvasHeight = tbHeight;
+        m_regionApplied = false;
+    }
+
+    RECT nextRegion{ m_relX, m_relY, m_relX + scaledWidth, m_relY + scaledHeight };
+    if (!m_regionApplied || !EqualRect(&m_appliedRegion, &nextRegion)) {
+        const int radius = std::max(1, static_cast<int>(6 * scale));
+        // GDI's rounded region excludes its right and bottom edge pixels.
+        HRGN region = CreateRoundRectRgn(nextRegion.left, nextRegion.top,
+            nextRegion.right + 1, nextRegion.bottom + 1, radius * 2, radius * 2);
+        if (region) {
+            if (SetWindowRgn(m_hAppWnd, region, TRUE)) {
+                m_appliedRegion = nextRegion;
+                m_regionApplied = true;
+            } else {
+                DeleteObject(region);
+            }
+        }
+    }
 }
 
 void TaskbarDock::SetBarOffset(int relX) {

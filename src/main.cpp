@@ -21,13 +21,13 @@ int WINAPI wWinMain(
     HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
     if (FAILED(hr)) return -1;
 
-    MusicBar::App app;
-    if (!app.Initialize(hInstance)) {
-        CoUninitialize();
-        return 0;
+    int exitCode = 0;
+    {
+        MusicBar::App app;
+        if (app.Initialize(hInstance)) {
+            exitCode = app.Run();
+        }
     }
-
-    int exitCode = app.Run();
     CoUninitialize();
     return exitCode;
 }

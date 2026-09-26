@@ -5,11 +5,13 @@
 #include <dwrite_1.h>
 #include <wincodec.h>
 #include <wrl/client.h>
+#include <array>
 #include <span>
 #include <string>
 #include <vector>
 #include <memory>
 #include <chrono>
+#include <deque>
 #include "core/Types.hpp"
 
 namespace MusicBar {
@@ -22,6 +24,7 @@ public:
     bool Initialize(HWND hWnd);
     void Resize(UINT width, UINT height);
     void UpdateTheme();
+    bool IsLightTheme() const { return m_isLightTheme; }
     void Render(
         POINT screenPos,
         const RECT& rcBar,
@@ -31,10 +34,18 @@ public:
         const SpectrumData& spectrum,
         ButtonType hoveredBtn,
         bool showLyrics,
-        bool isHovered
+        bool isMiddleHovered,
+        bool isCoverHovered
     );
 
     ButtonType HitTestButtons(int mouseX, int mouseY) const;
+    bool HitTestMiddle(int mouseX, int mouseY) const;
+    bool HitTestCover(int mouseX, int mouseY) const;
+    bool HitTestSpectrum(int mouseX, int mouseY) const;
+    RECT GetSpectrumRect() const;
+    RECT GetOutputDeviceRect() const;
+    void TriggerSpectrumClick();
+    bool HasPendingAnimation() const;
     void UpdateAlbumArt(const std::vector<uint8_t>& imageBytes);
 
 private:
@@ -48,6 +59,7 @@ private:
     // 32-bit DIB for UpdateLayeredWindow
     HDC m_hMemDC = nullptr;
     HBITMAP m_hDIB = nullptr;
+    HGDIOBJ m_hOldBitmap = nullptr;
     void* m_pDIBBits = nullptr;
     UINT m_width = 0;
     UINT m_height = 0;
@@ -62,6 +74,7 @@ private:
     Microsoft::WRL::ComPtr<ID2D1SolidColorBrush> m_pProgressBgBrush;
     Microsoft::WRL::ComPtr<ID2D1SolidColorBrush> m_pProgressFgBrush;
     Microsoft::WRL::ComPtr<ID2D1SolidColorBrush> m_pSpectrumBrush;
+    Microsoft::WRL::ComPtr<ID2D1LinearGradientBrush> m_pSpectrumGradientBrush;
     Microsoft::WRL::ComPtr<ID2D1SolidColorBrush> m_pBtnHoverBrush;
     Microsoft::WRL::ComPtr<ID2D1SolidColorBrush> m_pBtnIconBrush;
     Microsoft::WRL::ComPtr<ID2D1SolidColorBrush> m_pCoverPlaceholderBrush;
@@ -73,20 +86,47 @@ private:
     Microsoft::WRL::ComPtr<IDWriteTextFormat> m_pTitleFormat;
     Microsoft::WRL::ComPtr<IDWriteTextFormat> m_pArtistFormat;
     Microsoft::WRL::ComPtr<IDWriteTextFormat> m_pLyricFormat;
+    float m_textDpiScale = 0.0f;
 
-    // Album art cache
+    // Decoded bitmaps belong to the current Direct2D render target.
+    struct CachedAlbumArt {
+        uint64_t hash = 0;
+        size_t length = 0;
+        Microsoft::WRL::ComPtr<ID2D1Bitmap> bitmap;
+    };
     Microsoft::WRL::ComPtr<ID2D1Bitmap> m_pAlbumArtBitmap;
     std::vector<uint8_t> m_cachedImageBytes;
+    std::deque<CachedAlbumArt> m_albumArtCache;
 
     // Hit test regions
     D2D1_RECT_F m_rcBtnPrev{};
     D2D1_RECT_F m_rcBtnPlayPause{};
     D2D1_RECT_F m_rcBtnNext{};
+    D2D1_RECT_F m_rcBtnOutputDevice{};
+    D2D1_RECT_F m_rcMiddle{};
+    D2D1_RECT_F m_rcCover{};
+    D2D1_RECT_F m_rcSpectrum{};
+
+    Microsoft::WRL::ComPtr<IDWriteTextLayout> m_pCurrentLyricLayout;
+    std::wstring m_currentLyricText;
+    std::wstring m_previousLyricText;
+    std::wstring m_lyricTrackTitle;
+    int m_visibleLyricIndex = -1;
+    float m_lyricScrollX = 0.0f;
+    float m_currentLyricWidth = 0.0f;
+    std::chrono::steady_clock::time_point m_lyricTransitionStart{};
+    std::vector<uint8_t> m_blurSource;
+    std::vector<uint8_t> m_blurHorizontal;
 
     // Smooth Animation states
     float m_hoverProgress = 0.0f; // 0.0 (resting) -> 1.0 (hovered)
-    float m_btnHoverAlpha[3] = { 0.0f, 0.0f, 0.0f }; // Prev, PlayPause, Next
+    float m_coverHoverProgress = 0.0f;
+    float m_btnHoverAlpha[4] = {}; // Output device, Prev, Next, Play/Pause
     std::chrono::steady_clock::time_point m_lastAnimTime{};
+    std::chrono::steady_clock::time_point m_spectrumClickTime{};
+    std::array<float, SpectrumData::BAND_COUNT> m_spectrumPeaks{};
+    std::array<std::chrono::steady_clock::time_point,
+        SpectrumData::BAND_COUNT> m_peakHoldUntil{};
 
     float m_baseBgAlpha = 0.80f;
     float m_baseBorderAlpha = 0.14f;
@@ -98,6 +138,7 @@ private:
     float m_baseBtnIconAlpha = 0.95f;
 
     HRESULT CreateDeviceIndependentResources();
+    HRESULT CreateTextFormats(float dpiScale);
     HRESULT CreateDeviceResources();
     void DiscardDeviceResources();
 
@@ -105,7 +146,9 @@ private:
     void DrawVectorPause(const D2D1_RECT_F& rect);
     void DrawVectorPrev(const D2D1_RECT_F& rect);
     void DrawVectorNext(const D2D1_RECT_F& rect);
+    void DrawVectorStereo(const D2D1_RECT_F& rect);
     void DrawNoteIcon(const D2D1_RECT_F& rect);
+    void BlurRoundedPixels(const RECT& area, float strength, float radius);
 };
 
 } // namespace MusicBar

@@ -1,0 +1,16 @@
+* text=auto
+.gitattributes text eol=lf
+.gitignore text eol=lf
+CMakeLists.txt text eol=lf
+*.c text eol=lf
+*.cpp text eol=lf
+*.h text eol=lf
+*.hpp text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.rc text eol=lf
+*.manifest text eol=lf
+*.txt text eol=lf
+*.MIT text eol=lf
+*.png binary
+*.ico binary

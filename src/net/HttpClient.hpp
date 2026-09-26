@@ -17,7 +17,7 @@ struct HttpResponse {
 
 class HttpClient {
 public:
-    HttpClient();
+    explicit HttpClient(int timeoutMs = 5000);
     ~HttpClient();
 
     HttpResponse Get(
