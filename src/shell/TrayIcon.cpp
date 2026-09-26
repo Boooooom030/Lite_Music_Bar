@@ -52,7 +52,8 @@ void TrayIcon::ShowContextMenu(
     int currentSource,
     bool showLyrics,
     bool isVisible,
-    bool positionLocked
+    bool positionLocked,
+    bool settingsAvailable
 ) {
     HMENU hMenu = CreatePopupMenu();
     if (!hMenu) return;
@@ -75,6 +76,9 @@ void TrayIcon::ShowContextMenu(
     AppendMenuW(hSourceSubMenu, MF_STRING | (currentSource == 5 ? MF_CHECKED : MF_UNCHECKED), IDM_SOURCE_LRCLIB, L"LRCLIB (欧美歌词)");
     AppendMenuW(hMenu, MF_POPUP, reinterpret_cast<UINT_PTR>(hSourceSubMenu), L"歌词源选择 (Lyrics Source)");
 
+    AppendMenuW(hMenu, MF_SEPARATOR, 0, nullptr);
+    AppendMenuW(hMenu, MF_STRING | (settingsAvailable ? MF_ENABLED : MF_GRAYED),
+        IDM_SETTINGS, L"设置 (Settings)");
     AppendMenuW(hMenu, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(hMenu, MF_STRING, IDM_EXIT, L"退出 (Exit)");
 

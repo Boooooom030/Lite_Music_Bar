@@ -1,6 +1,7 @@
 # CMake build output
 build*/
 bin/
+obj/
 out/
 
 # Visual Studio temporary files

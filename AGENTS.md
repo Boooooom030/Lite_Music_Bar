@@ -8,9 +8,10 @@
 
 ## 1. Project Philosophy & Core Invariants
 
-1. **Zero External Runtime Dependency**:
-   - The binary must be 100% self-contained native code (`.exe`).
-   - Do NOT introduce bulky runtime frameworks (.NET, Electron, Qt, or heavy C++ GUI kits).
+1. **Native Taskbar Runtime**:
+   - `MusicBar.exe` must remain 100% self-contained native code.
+   - The optional `MusicBar.Settings.exe` is a separate WPF process. It must not be required to start or run the taskbar component.
+   - Do NOT introduce bulky runtime frameworks into `MusicBar.exe`.
    - Use Windows built-in system libraries: Direct2D (`d2d1`), DirectWrite (`dwrite`), WIC (`windowscodecs`), WinHTTP (`winhttp`), BCrypt (`bcrypt`), WASAPI (`mmdeviceapi`), and C++/WinRT (`windowsapp`).
 2. **Lightweight & High Performance** (targets; verify measurements before claiming them):
    - Memory footprint target: **< 15 MB RAM** in steady-state operation.
@@ -35,7 +36,7 @@ MusicBar/
 ├── docs/
 │   ├── ARCHITECTURE.md            # Current implementation and module map
 │   ├── ROADMAP.md                 # Outstanding work and manual verification
-│   ├── SETTINGS_GUI.md            # Future settings-process evaluation
+│   ├── SETTINGS_GUI.md            # Settings schema and process integration
 │   └── THIRD_PARTY.md            # Vendored dependencies and licenses
 ├── src/
 │   ├── core/                      # App coordinator and shared types
@@ -46,6 +47,7 @@ MusicBar/
 │   ├── ui/                        # Direct2D, images, lyric scroll, popup
 │   └── net/                       # WinHTTP
 ├── tests/                         # CTest regression tests
+├── settings/                      # Optional .NET 8 WPF settings process
 └── third_party/                   # nlohmann/json and miniz
 ```
 
@@ -57,6 +59,7 @@ MusicBar/
 - **Visual Studio 2022 / 2026** (MSVC toolset `14.4x` / `14.5x`)
 - **Windows 10/11 SDK** (`10.0.26100.0` or higher) with C++/WinRT headers
 - **CMake** (version 3.28+)
+- **.NET 8 SDK** for the optional settings program
 
 ### Command-Line Build Commands
 
@@ -104,4 +107,5 @@ When making code edits or expanding features:
 1. Consult [architecture](docs/ARCHITECTURE.md) for the current design and [roadmap](docs/ROADMAP.md) for outstanding work.
 2. Maintain clean separation of concerns: UI rendering stays in `ui/`, audio in `audio/`, networking in `net/`, and media in `media/`.
 3. Build with `cmake --build build-vs --config Release` and run CTest. Keep warnings visible and fix new warnings.
-4. After verifying new components, update [ROADMAP.md](docs/ROADMAP.md) as appropriate.
+4. When changing the settings program, also run `dotnet build settings/MusicBar.Settings.csproj -c Release`.
+5. After verifying new components, update [ROADMAP.md](docs/ROADMAP.md) as appropriate.

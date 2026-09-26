@@ -12,6 +12,7 @@ constexpr UINT IDM_SHOW_HIDE     = 1001;
 constexpr UINT IDM_TOGGLE_LYRICS = 1002;
 constexpr UINT IDM_REDOCK        = 1003;
 constexpr UINT IDM_LOCK_POSITION = 1004;
+constexpr UINT IDM_SETTINGS      = 1005;
 constexpr UINT IDM_SOURCE_AUTO   = 1010;
 constexpr UINT IDM_SOURCE_NETEASE= 1011;
 constexpr UINT IDM_SOURCE_QQ     = 1012;
@@ -29,7 +30,8 @@ public:
     void Remove();
     void SetTooltip(const std::wstring& tip);
     void ShowContextMenu(HWND hWnd, int x, int y, int currentSource,
-        bool showLyrics, bool isVisible, bool positionLocked);
+        bool showLyrics, bool isVisible, bool positionLocked,
+        bool settingsAvailable);
 
 private:
     NOTIFYICONDATAW m_nid{};

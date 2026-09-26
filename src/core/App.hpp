@@ -3,6 +3,7 @@
 #include <windows.h>
 #include <memory>
 #include "Types.hpp"
+#include "SettingsStore.hpp"
 #include "shell/TaskbarDock.hpp"
 #include "shell/TrayIcon.hpp"
 #include "media/MediaSession.hpp"
@@ -48,6 +49,12 @@ private:
     void RepaintBar();
     RECT GetSpectrumScreenRect() const;
     void ShowOutputDeviceMenu();
+    AppSettings CurrentSettings() const;
+    void ApplySettings(const AppSettings& settings);
+    void PersistSettings();
+    void ReloadSettingsIfChanged();
+    std::wstring SettingsExecutablePath() const;
+    void OpenSettings();
 
     static inline App* s_pInstance = nullptr;
 
@@ -85,6 +92,7 @@ private:
     bool m_showLyrics = true;
     int m_currentLyricsSource = 0;
     LyricsSource m_lastRequestedLyricsSource = LyricsSource::Auto;
+    uint64_t m_settingsFileStamp = 0;
 
     LyricsSource EffectiveLyricsSource() const;
 

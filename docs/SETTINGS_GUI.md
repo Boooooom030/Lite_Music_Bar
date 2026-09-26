@@ -1,31 +1,47 @@
-# 设置页面技术评估
+# 设置窗口与配置协议
 
-## 结论
+设置窗口位于 `settings/`，是独立的 WPF 8 程序 `MusicBar.Settings.exe`。任务栏主程序 `MusicBar.exe` 始终是原生 C++，不加载 .NET；找不到设置程序时，托盘中的“设置”入口禁用，其余功能照常运行。
 
-可以使用 C# 开发设置页面。建议让任务栏中的 `MusicBar.exe` 继续作为独立的原生 C++ 进程运行，并在用户打开设置时启动单独的 `MusicBar.Settings.exe`。这样关闭设置后，WPF / .NET 不会留在任务栏常驻进程中，也不会改变当前的窗口裁剪、点击穿透和媒体逻辑。设置程序是可选的独立交付物；如果未来要求整个产品只有一个原生 EXE 且无额外运行时，就需要改用 Win32 / Direct2D 实现设置窗口。
+当前机器只有 .NET 8 SDK，因此界面先使用 WPF 自定义的 Fluent 风格控件，并跟随 Windows 应用亮暗主题。WPF 官方内置 Fluent 主题从 .NET 9 开始；未来升级目标框架时可替换样式，不改变下述设置协议。
 
-## 框架选择
+## 版本 1 协议
 
-| 方案 | 适合的情况 | 代价 |
+配置文件固定为 `%LOCALAPPDATA%\MusicBar\settings.json`，UTF-8 编码，字段如下：
+
+```json
+{
+  "version": 1,
+  "showLyrics": true,
+  "positionLocked": false,
+  "lyricsSource": "auto",
+  "fftCaptureMode": "player"
+}
+```
+
+| 字段 | 允许值 | 含义 |
 | --- | --- | --- |
-| C# WPF + 官方 Fluent 主题 | 快速实现表单、绑定和主题切换；现有 C# 经验可以复用 | 设置程序需要 .NET Desktop Runtime，或打包自包含运行时；界面仅在打开设置时占用资源 |
-| C# WinUI 3（Windows App SDK） | 需要更完整的现代 Windows / Fluent 控件和交互 | 引入 Windows App SDK 的项目、打包和部署工作，设置程序体积及维护成本更高 |
-| C++ Win32 / Direct2D | 必须坚持整个产品都是原生、无额外运行时 | 表单、无障碍、绑定和主题控件需要自行实现，开发成本较高 |
+| `showLyrics` | `true` / `false` | 显示或隐藏同步歌词 |
+| `positionLocked` | `true` / `false` | 阻止拖动音乐栏，保留按钮点击 |
+| `lyricsSource` | `auto`、`netease`、`qq`、`kugou`、`soda`、`lrclib` | 自动优先当前播放器，或手动指定来源 |
+| `fftCaptureMode` | `player`、`system` | 当前播放器进程音频，或系统混音 |
 
-针对当前以轻量任务栏常驻为核心的项目，优先推荐 **C# WPF + 官方 Fluent 主题** 作为独立设置程序。这里的“Fluent”指设计语言和 WPF 主题；若需求特指 WinUI 3，应单独评估其部署方式。不要把旧 WPF 任务栏窗口重新嵌入 C++ 主程序。
+缺失的已知字段使用默认值；未知字段忽略。未知版本、错误类型和非法枚举值会被拒绝，主程序保留当时的设置。设置文件不存在时使用默认值。旧版 Windows 无法按进程采集时，`player` 模式仍退化到系统混音。
 
-## 推荐的集成边界
+WPF 程序将新内容写入同目录临时文件并原子替换原文件；保存前检查文件时间戳，避免覆盖设置窗口打开后由托盘菜单写入的更改。C++ 托盘菜单也通过临时文件替换写入。主程序每秒检查文件时间戳，在 UI 线程上应用更改；歌词来源改变时重新请求当前歌曲歌词，FFT 模式改变时重新连接音频采集。
 
-1. C++ 主程序仍负责所有任务栏交互、媒体控制、音频和歌词。托盘菜单提供“设置”入口，只在点击时启动设置程序。
-2. 将可配置项定义成有版本号的共享配置格式，保存在用户配置目录。C++ 侧负责默认值、范围检查和兼容旧版本；设置页面以原子替换方式保存文件，主程序重新读取。若托盘菜单也要保存设置，再约定单一写入方或并发写入规则。不要直接从 C# 修改当前 C++ 内存状态。
-3. 设置保存后可先用进程内轮询或文件变更通知刷新；如果需要立即获取当前设备、预览 FFT 等双向交互，再加同用户权限的命名管道。不要在初版引入复杂 IPC。
-4. C# 设置程序不能成为 `MusicBar.exe` 的启动前置条件；即使设置程序未安装、崩溃或 .NET 运行时缺失，任务栏栏位也应正常工作。
+## 构建与分发
 
-当前代码尚未实现持久化配置或设置入口。开始制作 GUI 前，先确定设置项清单及默认值，再实现上述配置边界。
+在仓库根目录执行：
+
+```powershell
+dotnet publish settings/MusicBar.Settings.csproj -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -p:DebugType=None -o build-settings
+```
+
+输出 `build-settings/MusicBar.Settings.exe` 是单文件设置程序，但仍依赖目标机器安装 .NET 8 Desktop Runtime。将它放在 `MusicBar.exe` 旁边即可启用托盘“设置”。GitHub Actions 把它作为独立的可选 ZIP 发布，不增加主程序 ZIP 的运行时依赖。
+
+设置页目前覆盖已经存在的四类开关。后续如需设备预览、实时 FFT 预览或更复杂的设置交互，再设计进程间通信；当前文件协议足以完成保存与热更新。
 
 ## 参考资料
 
 - [WPF 官方 Fluent 主题（.NET 9+）](https://learn.microsoft.com/en-us/dotnet/desktop/wpf/whats-new/net90)
-- [WinUI 3 与 Windows 10 1809 兼容性](https://learn.microsoft.com/en-us/windows/apps/winui/winui3/)
-- [.NET 单文件部署及自包含体积](https://learn.microsoft.com/en-us/dotnet/core/deploying/single-file/overview)
-- [Windows 桌面应用进程通信](https://learn.microsoft.com/en-us/windows/apps/develop/communication/interprocess-communication)
+- [.NET 单文件部署](https://learn.microsoft.com/en-us/dotnet/core/deploying/single-file/overview)

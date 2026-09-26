@@ -37,6 +37,7 @@ set(SOURCES
     # Core
     src/main.cpp
     src/core/App.cpp
+    src/core/SettingsStore.cpp
     
     # Shell & Taskbar
     src/shell/TaskbarDock.cpp
@@ -123,4 +124,10 @@ if(BUILD_TESTING)
     )
     target_link_libraries(LyricsParserTests PRIVATE bcrypt crypt32)
     add_test(NAME LyricsParserTests COMMAND LyricsParserTests)
+
+    add_executable(SettingsStoreTests
+        tests/SettingsStoreTests.cpp
+        src/core/SettingsStore.cpp
+    )
+    add_test(NAME SettingsStoreTests COMMAND SettingsStoreTests)
 endif()

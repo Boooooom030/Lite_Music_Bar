@@ -4,6 +4,8 @@
 #include <windowsx.h>
 #include <algorithm>
 #include <cstdlib>
+#include <filesystem>
+#include <shellapi.h>
 #include <vector>
 
 namespace MusicBar {
@@ -28,6 +30,84 @@ LyricsSource App::EffectiveLyricsSource() const {
     const auto selected = static_cast<LyricsSource>(m_currentLyricsSource);
     return selected == LyricsSource::Auto
         ? PreferredLyricsSource(m_currentTrack.sourceAppId) : selected;
+}
+
+AppSettings App::CurrentSettings() const {
+    AppSettings settings{};
+    settings.showLyrics = m_showLyrics;
+    settings.positionLocked = m_positionLocked;
+    settings.lyricsSource = static_cast<LyricsSource>(m_currentLyricsSource);
+    settings.fftCaptureMode = m_audio.GetCaptureMode() == AudioCaptureMode::SystemMix
+        ? SpectrumCaptureMode::System : SpectrumCaptureMode::Player;
+    return settings;
+}
+
+void App::ApplySettings(const AppSettings& settings) {
+    const bool sourceChanged =
+        m_currentLyricsSource != static_cast<int>(settings.lyricsSource);
+    const AudioCaptureMode captureMode =
+        settings.fftCaptureMode == SpectrumCaptureMode::System
+            ? AudioCaptureMode::SystemMix : AudioCaptureMode::PlayerProcess;
+    if (m_audio.GetCaptureMode() != captureMode) {
+        m_audio.SetCaptureMode(captureMode);
+        m_lastAudioActivity = {};
+        m_currentSpectrum = {};
+    }
+    m_showLyrics = settings.showLyrics;
+    m_currentLyricsSource = static_cast<int>(settings.lyricsSource);
+    m_positionLocked = settings.positionLocked;
+    if (m_positionLocked && m_isDragging) {
+        m_pressTarget = PressTarget::None;
+        m_isDragging = false;
+        m_suppressClickOnRelease = false;
+        if (GetCapture() == m_hWnd) ReleaseCapture();
+    }
+    if (sourceChanged && !m_currentTrack.title.empty()) {
+        const LyricsSource source = EffectiveLyricsSource();
+        m_lastRequestedLyricsSource = source;
+        m_lyrics.RequestLyrics(m_currentTrack.title, m_currentTrack.artist,
+            m_currentTrack.durationMs, source);
+    }
+    RepaintBar();
+}
+
+void App::PersistSettings() {
+    if (SettingsStore::Save(CurrentSettings())) {
+        m_settingsFileStamp = SettingsStore::GetFileStamp();
+    } else if (m_hWnd) {
+        MessageBoxW(m_hWnd, L"无法保存设置文件。", L"MusicBar",
+            MB_OK | MB_ICONWARNING);
+    }
+}
+
+void App::ReloadSettingsIfChanged() {
+    const uint64_t stamp = SettingsStore::GetFileStamp();
+    if (stamp == m_settingsFileStamp) return;
+    m_settingsFileStamp = stamp;
+    AppSettings settings{};
+    if (stamp == 0 || SettingsStore::Load(settings)) {
+        ApplySettings(settings);
+    }
+}
+
+std::wstring App::SettingsExecutablePath() const {
+    std::wstring modulePath(32768, L'\0');
+    const DWORD length = GetModuleFileNameW(nullptr, modulePath.data(),
+        static_cast<DWORD>(modulePath.size()));
+    if (length == 0 || length >= modulePath.size()) return {};
+    modulePath.resize(length);
+    return (std::filesystem::path(modulePath).parent_path() /
+        L"MusicBar.Settings.exe").wstring();
+}
+
+void App::OpenSettings() {
+    const std::wstring path = SettingsExecutablePath();
+    if (path.empty() ||
+        reinterpret_cast<INT_PTR>(ShellExecuteW(nullptr, L"open", path.c_str(),
+            nullptr, nullptr, SW_SHOWNORMAL)) <= 32) {
+        MessageBoxW(m_hWnd, L"无法启动设置程序。请将 MusicBar.Settings.exe 放在 MusicBar.exe 旁边。",
+            L"MusicBar", MB_OK | MB_ICONWARNING);
+    }
 }
 
 App::~App() {
@@ -79,6 +159,11 @@ LRESULT CALLBACK App::StaticWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM l
 
 bool App::Initialize(HINSTANCE hInstance) {
     m_hInstance = hInstance;
+    m_settingsFileStamp = SettingsStore::GetFileStamp();
+    AppSettings savedSettings{};
+    if (SettingsStore::Load(savedSettings)) {
+        ApplySettings(savedSettings);
+    }
 
     // Single-instance enforcement
     m_hSingleInstanceMutex = CreateMutexW(nullptr, TRUE, L"Global\\MusicBar_Cpp_SingleInstance_Mutex");
@@ -319,6 +404,7 @@ LRESULT App::HandleMessage(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             }
         } else if (wParam == 2) {
             // 1s watchdog timer: re-dock or update layout
+            ReloadSettingsIfChanged();
             if (!m_dock.IsDocked()) {
                 m_dock.Attach(hWnd);
             } else {
@@ -592,8 +678,14 @@ LRESULT App::HandleMessage(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     case WM_RBUTTONUP: {
         POINT pt;
         GetCursorPos(&pt);
+        const std::wstring settingsPath = SettingsExecutablePath();
+        const DWORD settingsAttributes = settingsPath.empty()
+            ? INVALID_FILE_ATTRIBUTES : GetFileAttributesW(settingsPath.c_str());
+        const bool settingsAvailable = !settingsPath.empty() &&
+            settingsAttributes != INVALID_FILE_ATTRIBUTES &&
+            !(settingsAttributes & FILE_ATTRIBUTE_DIRECTORY);
         m_trayIcon.ShowContextMenu(hWnd, pt.x, pt.y, m_currentLyricsSource,
-            m_showLyrics, m_isVisible, m_positionLocked);
+            m_showLyrics, m_isVisible, m_positionLocked, settingsAvailable);
         return 0;
     }
 
@@ -601,8 +693,14 @@ LRESULT App::HandleMessage(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         if (lParam == WM_RBUTTONUP) {
             POINT pt;
             GetCursorPos(&pt);
+            const std::wstring settingsPath = SettingsExecutablePath();
+            const DWORD settingsAttributes = settingsPath.empty()
+                ? INVALID_FILE_ATTRIBUTES : GetFileAttributesW(settingsPath.c_str());
+            const bool settingsAvailable = !settingsPath.empty() &&
+                settingsAttributes != INVALID_FILE_ATTRIBUTES &&
+                !(settingsAttributes & FILE_ATTRIBUTE_DIRECTORY);
             m_trayIcon.ShowContextMenu(hWnd, pt.x, pt.y, m_currentLyricsSource,
-                m_showLyrics, m_isVisible, m_positionLocked);
+                m_showLyrics, m_isVisible, m_positionLocked, settingsAvailable);
         } else if (lParam == WM_LBUTTONDBLCLK) {
             m_isVisible = !m_isVisible;
             if (!m_isVisible) m_volumePopup.Hide();
@@ -624,6 +722,7 @@ LRESULT App::HandleMessage(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 
         case IDM_TOGGLE_LYRICS:
             m_showLyrics = !m_showLyrics;
+            PersistSettings();
             RepaintBar();
             break;
 
@@ -633,6 +732,7 @@ LRESULT App::HandleMessage(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             m_isDragging = false;
             m_suppressClickOnRelease = false;
             if (GetCapture() == hWnd) ReleaseCapture();
+            PersistSettings();
             break;
 
         case IDM_SOURCE_AUTO:
@@ -648,6 +748,7 @@ LRESULT App::HandleMessage(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             else if (cmdId == IDM_SOURCE_SODA) selected = LyricsSource::Soda;
             else if (cmdId == IDM_SOURCE_LRCLIB) selected = LyricsSource::Lrclib;
             m_currentLyricsSource = static_cast<int>(selected);
+            PersistSettings();
             const LyricsSource src = EffectiveLyricsSource();
             m_lastRequestedLyricsSource = src;
             m_lyrics.RequestLyrics(
@@ -662,6 +763,10 @@ LRESULT App::HandleMessage(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         case IDM_REDOCK:
             m_dock.SetBarOffset(-1); // Auto reset to default left-of-tray position
             RepaintBar();
+            break;
+
+        case IDM_SETTINGS:
+            OpenSettings();
             break;
 
         case IDM_EXIT:
