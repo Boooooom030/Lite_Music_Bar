@@ -417,7 +417,7 @@ void VolumePopup::Paint() {
 
     HFONT font = CreateFontW(-MulDiv(12, m_dpi, 96), 0, 0, 0,
         FW_MEDIUM, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS,
-        CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Segoe UI");
+        CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Microsoft YaHei UI");
     HGDIOBJ oldFont = font ? SelectObject(memory, font) : nullptr;
     SetBkMode(memory, TRANSPARENT);
     SetTextColor(memory, palette.text);

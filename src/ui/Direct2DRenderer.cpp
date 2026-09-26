@@ -77,12 +77,12 @@ HRESULT Direct2DRenderer::CreateTextFormats(float dpiScale) {
     auto createFormat = [this, dpiScale](DWRITE_FONT_WEIGHT weight,
         float baseSize, Microsoft::WRL::ComPtr<IDWriteTextFormat>& format) {
         HRESULT hr = m_pDWriteFactory->CreateTextFormat(
-            L"Segoe UI Variable Text", nullptr, weight,
+            L"Microsoft YaHei UI", nullptr, weight,
             DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL,
             baseSize * dpiScale, L"", format.GetAddressOf());
         if (FAILED(hr)) {
             hr = m_pDWriteFactory->CreateTextFormat(
-                L"Microsoft YaHei UI", nullptr, weight,
+                L"Segoe UI Variable Text", nullptr, weight,
                 DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL,
                 baseSize * dpiScale, L"", format.GetAddressOf());
         }

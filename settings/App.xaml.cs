@@ -34,15 +34,18 @@ public partial class App : Application
         var light = value is not int numeric || numeric != 0;
         IsLightTheme = light;
 
-        SetBrush("WindowBrush", light ? "#F4F6FA" : "#10151D");
-        SetBrush("CardBrush", light ? "#FFFFFF" : "#1A212B");
-        SetBrush("InputBrush", light ? "#F7F8FB" : "#252E3B");
-        SetBrush("TextBrush", light ? "#1B2430" : "#F0F3F8");
-        SetBrush("MutedBrush", light ? "#647083" : "#A5B0BF");
-        SetBrush("BorderBrush", light ? "#DFE4EC" : "#354152");
-        SetBrush("AccentBrush", light ? "#3176E4" : "#70A8FF");
-        SetBrush("AccentHoverBrush", light ? "#245EBB" : "#4B91F6");
-        SetBrush("AccentSoftBrush", light ? "#EAF2FF" : "#203856");
+        SetBrush("WindowBrush", light ? "#F5F6F8" : "#202124");
+        SetBrush("SidebarBrush", light ? "#C8F5F6F8" : "#C81B1C20");
+        SetBrush("CardBrush", light ? "#D9FFFFFF" : "#D92B2D31");
+        SetBrush("InputBrush", light ? "#AAFFFFFF" : "#AA34363A");
+        SetBrush("TextBrush", light ? "#202124" : "#F5F5F5");
+        SetBrush("MutedBrush", light ? "#626A73" : "#B1B6BE");
+        SetBrush("BorderBrush", light ? "#2A858D98" : "#3FFFFFFF");
+        SetBrush("AccentBrush", light ? "#0F6CBD" : "#72B4F8");
+        SetBrush("AccentHoverBrush", light ? "#115EA3" : "#91C5FA");
+        SetBrush("AccentTextBrush", light ? "#FFFFFF" : "#10263A");
+        SetBrush("AccentSoftBrush", light ? "#DDE9F3FC" : "#55305577");
+        SetBrush("HoverBrush", light ? "#90FFFFFF" : "#33FFFFFF");
         if (MainWindow is MainWindow window)
             window.UpdateTitleBarTheme(light);
     }

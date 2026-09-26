@@ -1,142 +1,227 @@
 <Window x:Class="MusicBar.Settings.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="MusicBar 设置" Width="740" Height="690" MinWidth="620" MinHeight="580"
-        WindowStartupLocation="CenterScreen" FontFamily="Segoe UI"
+        Title="MusicBar 设置" Width="900" Height="660" MinWidth="740" MinHeight="540"
+        WindowStartupLocation="CenterScreen" FontFamily="Microsoft YaHei UI"
+        FontSize="13" UseLayoutRounding="True" SnapsToDevicePixels="True"
+        TextOptions.TextFormattingMode="Display"
         Background="{DynamicResource WindowBrush}">
-    <Grid Margin="30,26,30,24">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/>
-            <RowDefinition Height="Auto"/>
-        </Grid.RowDefinitions>
+    <Grid Background="{DynamicResource WindowOverlayBrush}">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="224"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
 
-        <StackPanel Margin="2,0,0,24">
-            <TextBlock Text="MusicBar" FontSize="14" FontWeight="SemiBold"
-                       Foreground="{DynamicResource AccentBrush}"/>
-            <TextBlock Text="设置" FontSize="30" FontWeight="SemiBold" Margin="0,6,0,4"/>
-            <TextBlock Text="调整歌词显示、任务栏交互和音频频谱。"
-                       Foreground="{DynamicResource MutedBrush}" FontSize="13"/>
-        </StackPanel>
+        <Border Grid.Column="0" Background="{DynamicResource SidebarBrush}"
+                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,1,0">
+            <Grid Margin="16,24,16,20">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
 
-        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto"
-                      HorizontalScrollBarVisibility="Disabled">
-            <StackPanel Margin="0,0,8,0">
-                <Border Background="{DynamicResource CardBrush}"
-                        BorderBrush="{DynamicResource BorderBrush}"
-                        BorderThickness="1" CornerRadius="16" Padding="22"
-                        Margin="0,0,0,16">
-                    <StackPanel>
-                        <TextBlock Text="任务栏显示" FontSize="18" FontWeight="SemiBold"
-                                   Margin="0,0,0,19"/>
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            <StackPanel>
-                                <TextBlock Text="显示同步歌词" FontWeight="SemiBold"/>
-                                <TextBlock Text="在歌曲信息下方显示当前歌词。"
-                                           Foreground="{DynamicResource MutedBrush}"
-                                           FontSize="12" Margin="0,4,0,0"/>
-                            </StackPanel>
-                            <CheckBox x:Name="ShowLyricsToggle" Grid.Column="1"
-                                      Style="{StaticResource ToggleStyle}"
-                                      VerticalAlignment="Center" Margin="18,0,0,0"/>
-                        </Grid>
-                        <Border Height="1" Background="{DynamicResource BorderBrush}"
-                                Margin="0,18,0,18"/>
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            <StackPanel>
-                                <TextBlock Text="锁定音乐栏位置" FontWeight="SemiBold"/>
-                                <TextBlock Text="防止拖动改变任务栏中的位置，按钮仍可点击。"
-                                           Foreground="{DynamicResource MutedBrush}"
-                                           FontSize="12" Margin="0,4,0,0"/>
-                            </StackPanel>
-                            <CheckBox x:Name="PositionLockedToggle" Grid.Column="1"
-                                      Style="{StaticResource ToggleStyle}"
-                                      VerticalAlignment="Center" Margin="18,0,0,0"/>
-                        </Grid>
+                <StackPanel Orientation="Horizontal" Margin="9,2,0,44">
+                    <Border Width="34" Height="34" CornerRadius="8"
+                            Background="{DynamicResource AccentBrush}" VerticalAlignment="Center">
+                        <TextBlock Text="M" FontFamily="Segoe UI" FontSize="18" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource AccentTextBrush}"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <StackPanel Margin="11,0,0,0" VerticalAlignment="Center">
+                        <TextBlock Text="MusicBar" FontFamily="Segoe UI" FontWeight="SemiBold" FontSize="15"/>
+                        <TextBlock Text="个性化设置" FontSize="11" Foreground="{DynamicResource MutedBrush}"/>
                     </StackPanel>
-                </Border>
-
-                <Border Background="{DynamicResource CardBrush}"
-                        BorderBrush="{DynamicResource BorderBrush}"
-                        BorderThickness="1" CornerRadius="16" Padding="22"
-                        Margin="0,0,0,16">
-                    <StackPanel>
-                        <TextBlock Text="歌词来源" FontSize="18" FontWeight="SemiBold"/>
-                        <TextBlock Text="自动模式会优先尝试当前播放器对应的平台。"
-                                   Foreground="{DynamicResource MutedBrush}"
-                                   FontSize="12" Margin="0,5,0,18"/>
-                        <WrapPanel>
-                            <RadioButton x:Name="SourceAuto" Content="自动" Tag="auto"
-                                         GroupName="LyricsSource" Style="{StaticResource ChoiceStyle}"/>
-                            <RadioButton x:Name="SourceNetEase" Content="网易云" Tag="netease"
-                                         GroupName="LyricsSource" Style="{StaticResource ChoiceStyle}"/>
-                            <RadioButton x:Name="SourceQQ" Content="QQ 音乐" Tag="qq"
-                                         GroupName="LyricsSource" Style="{StaticResource ChoiceStyle}"/>
-                            <RadioButton x:Name="SourceKugou" Content="酷狗" Tag="kugou"
-                                         GroupName="LyricsSource" Style="{StaticResource ChoiceStyle}"/>
-                            <RadioButton x:Name="SourceSoda" Content="汽水" Tag="soda"
-                                         GroupName="LyricsSource" Style="{StaticResource ChoiceStyle}"/>
-                            <RadioButton x:Name="SourceLrclib" Content="LRCLIB" Tag="lrclib"
-                                         GroupName="LyricsSource" Style="{StaticResource ChoiceStyle}"/>
-                        </WrapPanel>
-                    </StackPanel>
-                </Border>
-
-                <Border Background="{DynamicResource CardBrush}"
-                        BorderBrush="{DynamicResource BorderBrush}"
-                        BorderThickness="1" CornerRadius="16" Padding="22"
-                        Margin="0,0,0,16">
-                    <StackPanel>
-                        <TextBlock Text="FFT 音频来源" FontSize="18" FontWeight="SemiBold"/>
-                        <TextBlock Text="切换频谱采集的声音范围。"
-                                   Foreground="{DynamicResource MutedBrush}"
-                                   FontSize="12" Margin="0,5,0,18"/>
-                        <WrapPanel>
-                            <RadioButton x:Name="CapturePlayer" Content="当前播放器" Tag="player"
-                                         GroupName="CaptureMode" Style="{StaticResource ChoiceStyle}"/>
-                            <RadioButton x:Name="CaptureSystem" Content="系统混音" Tag="system"
-                                         GroupName="CaptureMode" Style="{StaticResource ChoiceStyle}"/>
-                        </WrapPanel>
-                        <TextBlock Text="较旧的 Windows 版本无法按进程采集时，会使用系统混音。"
-                                   Foreground="{DynamicResource MutedBrush}"
-                                   FontSize="12" TextWrapping="Wrap" Margin="0,5,0,0"/>
-                    </StackPanel>
-                </Border>
-            </StackPanel>
-        </ScrollViewer>
-
-        <Border Grid.Row="2" BorderBrush="{DynamicResource BorderBrush}"
-                BorderThickness="0,1,0,0" Padding="2,18,0,0">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-                <StackPanel VerticalAlignment="Center">
-                    <TextBlock x:Name="StatusText" Text="准备就绪"
-                               Foreground="{DynamicResource MutedBrush}" FontSize="12"/>
-                    <TextBlock x:Name="ConfigPathText" FontSize="11"
-                               Foreground="{DynamicResource MutedBrush}"
-                               TextTrimming="CharacterEllipsis" MaxWidth="350"
-                               Margin="0,3,0,0"/>
                 </StackPanel>
-                <StackPanel Grid.Column="1" Orientation="Horizontal">
-                    <Button Content="重新读取" Style="{StaticResource SecondaryButtonStyle}"
-                            Click="ReloadClicked" Margin="0,0,8,0"/>
-                    <Button Content="恢复默认" Style="{StaticResource SecondaryButtonStyle}"
-                            Click="ResetClicked" Margin="0,0,8,0"/>
-                    <Button Content="保存设置" Style="{StaticResource PrimaryButtonStyle}"
-                            Click="SaveClicked"/>
+
+                <StackPanel Grid.Row="1">
+                    <TextBlock Text="分类" FontSize="11" Foreground="{DynamicResource MutedBrush}"
+                               Margin="14,0,0,10"/>
+                    <RadioButton x:Name="NavTaskbar" Tag="taskbar" GroupName="Pages"
+                                 Style="{StaticResource NavigationStyle}" Checked="NavigationChecked">
+                        <StackPanel Orientation="Horizontal">
+                            <Path Width="18" Height="18" Stretch="Uniform" Stroke="{DynamicResource TextBrush}"
+                                  StrokeThickness="1.5" Data="M 2,3 L 18,3 18,14 2,14 Z M 7,17 L 13,17 M 10,14 L 10,17"/>
+                            <TextBlock Text="任务栏" Margin="14,0,0,0" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </RadioButton>
+                    <RadioButton x:Name="NavLyrics" Tag="lyrics" GroupName="Pages"
+                                 Style="{StaticResource NavigationStyle}" Checked="NavigationChecked">
+                        <StackPanel Orientation="Horizontal">
+                            <Path Width="18" Height="18" Stretch="Uniform" Stroke="{DynamicResource TextBrush}"
+                                  StrokeThickness="1.5" Data="M 3,4 L 17,4 M 3,9 L 14,9 M 3,14 L 11,14"/>
+                            <TextBlock Text="歌词" Margin="14,0,0,0" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </RadioButton>
+                    <RadioButton x:Name="NavAudio" Tag="audio" GroupName="Pages"
+                                 Style="{StaticResource NavigationStyle}" Checked="NavigationChecked">
+                        <StackPanel Orientation="Horizontal">
+                            <Path Width="18" Height="18" Stretch="Uniform" Stroke="{DynamicResource TextBrush}"
+                                  StrokeThickness="1.5" Data="M 2,11 L 5,11 7,5 10,16 13,7 15,11 18,11"/>
+                            <TextBlock Text="音频频谱" Margin="14,0,0,0" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </RadioButton>
+                </StackPanel>
+
+                <StackPanel Grid.Row="2" Margin="10,0,10,0">
+                    <Border Height="1" Background="{DynamicResource BorderBrush}" Margin="0,0,0,16"/>
+                    <TextBlock Text="设置保存在本机" FontSize="11"
+                               Foreground="{DynamicResource MutedBrush}"/>
+                    <TextBlock x:Name="ConfigPathText" FontSize="10"
+                               Foreground="{DynamicResource MutedBrush}"
+                               TextTrimming="CharacterEllipsis" Margin="0,4,0,0"/>
                 </StackPanel>
             </Grid>
         </Border>
+
+        <Grid Grid.Column="1">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <StackPanel Margin="36,30,36,25">
+                <TextBlock Text="设置 / MUSICBAR" FontFamily="Segoe UI" FontSize="11"
+                           Foreground="{DynamicResource AccentBrush}" FontWeight="SemiBold"/>
+                <TextBlock x:Name="PageTitle" Text="任务栏" FontSize="28"
+                           FontWeight="SemiBold" Margin="0,8,0,5"/>
+                <TextBlock x:Name="PageDescription" Text="决定音乐栏如何显示和响应操作。"
+                           Foreground="{DynamicResource MutedBrush}" TextWrapping="Wrap"/>
+            </StackPanel>
+
+            <ScrollViewer x:Name="SettingsScrollViewer" Grid.Row="1" VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled" Padding="0"
+                          Margin="36,0,25,0">
+                <Grid Margin="0,0,11,14">
+                    <StackPanel x:Name="PageTaskbar">
+                        <TextBlock Text="显示与交互" FontSize="15" FontWeight="SemiBold" Margin="0,0,0,12"/>
+                        <Border Style="{StaticResource CardStyle}">
+                            <StackPanel>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Margin="0,0,16,0">
+                                        <TextBlock Text="显示同步歌词" FontWeight="SemiBold"/>
+                                        <TextBlock Text="在歌曲信息下方显示当前歌词。" FontSize="12"
+                                                   Foreground="{DynamicResource MutedBrush}"
+                                                   TextWrapping="Wrap" Margin="0,5,0,0"/>
+                                    </StackPanel>
+                                    <CheckBox x:Name="ShowLyricsToggle" Grid.Column="1"
+                                              Style="{StaticResource ToggleStyle}"
+                                              AutomationProperties.Name="显示同步歌词"
+                                              VerticalAlignment="Center"/>
+                                </Grid>
+                                <Border Height="1" Background="{DynamicResource BorderBrush}"
+                                        Margin="0,20,0,20"/>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Margin="0,0,16,0">
+                                        <TextBlock Text="锁定音乐栏位置" FontWeight="SemiBold"/>
+                                        <TextBlock Text="避免误拖动；播放按钮和频谱仍可点击。" FontSize="12"
+                                                   Foreground="{DynamicResource MutedBrush}"
+                                                   TextWrapping="Wrap" Margin="0,5,0,0"/>
+                                    </StackPanel>
+                                    <CheckBox x:Name="PositionLockedToggle" Grid.Column="1"
+                                              Style="{StaticResource ToggleStyle}"
+                                              AutomationProperties.Name="锁定音乐栏位置"
+                                              VerticalAlignment="Center"/>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+                        <TextBlock Text="更改保存后，运行中的音乐栏通常会在一秒内更新。"
+                                   Foreground="{DynamicResource MutedBrush}" FontSize="12"
+                                   Margin="2,10,0,0" TextWrapping="Wrap"/>
+                    </StackPanel>
+
+                    <StackPanel x:Name="PageLyrics" Visibility="Collapsed">
+                        <TextBlock Text="歌词来源" FontSize="15" FontWeight="SemiBold" Margin="0,0,0,12"/>
+                        <Border Style="{StaticResource CardStyle}">
+                            <StackPanel>
+                                <TextBlock Text="优先使用当前播放器的平台" FontWeight="SemiBold"/>
+                                <TextBlock Text="自动模式会根据正在播放的软件优先查询对应平台。也可以固定使用一个来源。"
+                                           Foreground="{DynamicResource MutedBrush}" FontSize="12"
+                                           TextWrapping="Wrap" Margin="0,6,0,19"/>
+                                <WrapPanel>
+                                    <RadioButton x:Name="SourceAuto" Content="自动选择" Tag="auto"
+                                                 GroupName="LyricsSource" Style="{StaticResource ChoiceStyle}"/>
+                                    <RadioButton x:Name="SourceNetEase" Content="网易云音乐" Tag="netease"
+                                                 GroupName="LyricsSource" Style="{StaticResource ChoiceStyle}"/>
+                                    <RadioButton x:Name="SourceQQ" Content="QQ 音乐" Tag="qq"
+                                                 GroupName="LyricsSource" Style="{StaticResource ChoiceStyle}"/>
+                                    <RadioButton x:Name="SourceKugou" Content="酷狗音乐" Tag="kugou"
+                                                 GroupName="LyricsSource" Style="{StaticResource ChoiceStyle}"/>
+                                    <RadioButton x:Name="SourceSoda" Content="汽水音乐" Tag="soda"
+                                                 GroupName="LyricsSource" Style="{StaticResource ChoiceStyle}"/>
+                                    <RadioButton x:Name="SourceLrclib" Content="LRCLIB" Tag="lrclib"
+                                                 GroupName="LyricsSource" Style="{StaticResource ChoiceStyle}"/>
+                                </WrapPanel>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+
+                    <StackPanel x:Name="PageAudio" Visibility="Collapsed">
+                        <TextBlock Text="FFT 音频来源" FontSize="15" FontWeight="SemiBold" Margin="0,0,0,12"/>
+                        <Border Style="{StaticResource CardStyle}">
+                            <StackPanel>
+                                <TextBlock Text="选择频谱响应的声音" FontWeight="SemiBold"/>
+                                <TextBlock Text="此选项只影响右侧的音频频谱，不改变播放器音量。"
+                                           Foreground="{DynamicResource MutedBrush}" FontSize="12"
+                                           TextWrapping="Wrap" Margin="0,6,0,19"/>
+                                <StackPanel>
+                                    <RadioButton x:Name="CapturePlayer" Tag="player" GroupName="CaptureMode"
+                                                 Style="{StaticResource ChoiceStyle}" HorizontalAlignment="Stretch">
+                                        <StackPanel>
+                                            <TextBlock Text="当前播放器" FontWeight="SemiBold"/>
+                                            <TextBlock Text="仅响应当前音乐软件的声音" FontSize="11"
+                                                       Foreground="{DynamicResource MutedBrush}" Margin="0,4,0,0"/>
+                                        </StackPanel>
+                                    </RadioButton>
+                                    <RadioButton x:Name="CaptureSystem" Tag="system" GroupName="CaptureMode"
+                                                 Style="{StaticResource ChoiceStyle}" HorizontalAlignment="Stretch">
+                                        <StackPanel>
+                                            <TextBlock Text="系统混音" FontWeight="SemiBold"/>
+                                            <TextBlock Text="响应输出设备上的所有声音" FontSize="11"
+                                                       Foreground="{DynamicResource MutedBrush}" Margin="0,4,0,0"/>
+                                        </StackPanel>
+                                    </RadioButton>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                        <TextBlock Text="较旧的 Windows 版本无法按进程采集时，会自动使用系统混音。"
+                                   Foreground="{DynamicResource MutedBrush}" FontSize="12"
+                                   Margin="2,10,0,0" TextWrapping="Wrap"/>
+                    </StackPanel>
+                </Grid>
+            </ScrollViewer>
+
+            <Border Grid.Row="2" Background="{DynamicResource SidebarBrush}"
+                    BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,0"
+                    Padding="36,14,36,14">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock x:Name="StatusText" Text="准备就绪" FontSize="11"
+                               Foreground="{DynamicResource MutedBrush}"
+                               VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                               Margin="0,0,12,0"/>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                        <Button Content="重新读取" Style="{StaticResource SecondaryButtonStyle}"
+                                Click="ReloadClicked" Margin="0,0,8,0"/>
+                        <Button Content="恢复默认" Style="{StaticResource SecondaryButtonStyle}"
+                                Click="ResetClicked" Margin="0,0,8,0"/>
+                        <Button Content="保存设置" Style="{StaticResource PrimaryButtonStyle}"
+                                Click="SaveClicked"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </Grid>
     </Grid>
 </Window>

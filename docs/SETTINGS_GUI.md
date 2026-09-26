@@ -2,7 +2,7 @@
 
 设置窗口位于 `settings/`，是独立的 WPF 8 程序 `MusicBar.Settings.exe`。任务栏主程序 `MusicBar.exe` 始终是原生 C++，不加载 .NET；找不到设置程序时，托盘中的“设置”入口禁用，其余功能照常运行。
 
-当前机器只有 .NET 8 SDK，因此界面先使用 WPF 自定义的 Fluent 风格控件，并跟随 Windows 应用亮暗主题。WPF 官方内置 Fluent 主题从 .NET 9 开始；未来升级目标框架时可替换样式，不改变下述设置协议。
+当前机器只有 .NET 8 SDK，因此界面使用 WPF 自定义的 Fluent 风格控件。设置按“任务栏 / 歌词 / 音频频谱”分为左侧导航和右侧详细设置；中文明确使用 Windows 自带的“Microsoft YaHei UI”，避免随系统语言回退到繁体或日文字形。窗口跟随 Windows 应用亮暗主题；Windows 11 22H2 及更新版本以系统 Mica 作为底层磨砂材质，旧版 Windows 使用同主题纯色背景。卡片和侧栏使用轻透明填充，不额外引入 Windows App SDK 运行时。WPF 官方内置 Fluent 主题从 .NET 9 开始；未来升级目标框架时可替换样式，不改变下述设置协议。
 
 ## 版本 1 协议
 
