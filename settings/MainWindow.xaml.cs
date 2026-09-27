@@ -9,7 +9,8 @@ namespace MusicBar.Settings;
 
 public partial class MainWindow : Window
 {
-    private DateTime _loadedStamp;
+    private bool _isReady;
+    private bool _updatingControls;
 
     [StructLayout(LayoutKind.Sequential)]
     private struct Margins
@@ -30,10 +31,9 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
-        ConfigPathText.Text = SettingsStore.FilePath;
-        ConfigPathText.ToolTip = SettingsStore.FilePath;
         NavTaskbar.IsChecked = true;
         LoadSettings();
+        _isReady = true;
     }
 
     protected override void OnSourceInitialized(EventArgs e)
@@ -85,77 +85,122 @@ public partial class MainWindow : Window
 
         (PageTitle.Text, PageDescription.Text) = page switch
         {
-            "lyrics" => ("歌词", "选择歌词的来源，让正在播放的歌曲更容易被识别。"),
-            "audio" => ("音频频谱", "决定频谱跟随当前播放器，还是响应系统中的所有声音。"),
-            _ => ("任务栏", "决定音乐栏如何显示和响应操作。")
+            "lyrics" => ("歌词", "调整同步歌词的显示和获取方式。"),
+            "audio" => ("音频频谱", "选择频谱响应的声音范围。"),
+            _ => ("任务栏", "调整任务栏中音乐栏的显示和交互。")
         };
         SettingsScrollViewer.ScrollToTop();
     }
 
-    private RadioButton[] SourceButtons =>
-        [SourceAuto, SourceNetEase, SourceQQ, SourceKugou, SourceSoda, SourceLrclib];
+    private void SearchTextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (NavTaskbar is null || NavLyrics is null || NavAudio is null ||
+            SearchHint is null || NoSearchResults is null) return;
 
-    private RadioButton[] CaptureButtons => [CapturePlayer, CaptureSystem];
+        var query = SearchBox.Text.Trim();
+        SearchHint.Visibility = query.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+        bool Matches(string terms) => query.Length == 0 ||
+            terms.Contains(query, StringComparison.CurrentCultureIgnoreCase);
+
+        NavTaskbar.Visibility = Matches("任务栏 音乐栏 位置 锁定 拖动")
+            ? Visibility.Visible : Visibility.Collapsed;
+        NavLyrics.Visibility = Matches("歌词 显示 来源 网易云 QQ 酷狗 汽水 LRCLIB")
+            ? Visibility.Visible : Visibility.Collapsed;
+        NavAudio.Visibility = Matches("音频 频谱 FFT 播放器 系统混音")
+            ? Visibility.Visible : Visibility.Collapsed;
+
+        NoSearchResults.Visibility = NavTaskbar.Visibility == Visibility.Collapsed &&
+            NavLyrics.Visibility == Visibility.Collapsed && NavAudio.Visibility == Visibility.Collapsed
+            ? Visibility.Visible : Visibility.Collapsed;
+
+        if (NavTaskbar.IsChecked == true && NavTaskbar.Visibility == Visibility.Collapsed ||
+            NavLyrics.IsChecked == true && NavLyrics.Visibility == Visibility.Collapsed ||
+            NavAudio.IsChecked == true && NavAudio.Visibility == Visibility.Collapsed)
+        {
+            var next = new[] { NavTaskbar, NavLyrics, NavAudio }
+                .FirstOrDefault(button => button.Visibility == Visibility.Visible);
+            if (next is not null) next.IsChecked = true;
+        }
+    }
 
     private void LoadSettings()
     {
         var loaded = SettingsStore.TryLoad(out var settings, out var error);
         Display(settings);
-        _loadedStamp = SettingsStore.FileStamp;
-        StatusText.Text = loaded
-            ? "已读取设置；保存后运行中的 MusicBar 会自动更新。"
-            : error ?? "设置文件无法读取。";
+        SetStatus(loaded ? "更改会自动保存并应用到音乐栏。" : error ?? "设置文件无法读取。", !loaded);
     }
 
     private void Display(SettingsModel settings)
     {
-        ShowLyricsToggle.IsChecked = settings.ShowLyrics;
-        PositionLockedToggle.IsChecked = settings.PositionLocked;
-        foreach (var button in SourceButtons)
-            button.IsChecked = (string)button.Tag == settings.LyricsSource;
-        foreach (var button in CaptureButtons)
-            button.IsChecked = (string)button.Tag == settings.FftCaptureMode;
+        _updatingControls = true;
+        try
+        {
+            ShowLyricsToggle.IsChecked = settings.ShowLyrics;
+            PositionLockedToggle.IsChecked = settings.PositionLocked;
+            SourcePicker.SelectedValue = settings.LyricsSource;
+            CapturePicker.SelectedValue = settings.FftCaptureMode;
+        }
+        finally
+        {
+            _updatingControls = false;
+        }
     }
 
-    private SettingsModel ReadControls()
+    private void SettingChanged(object sender, RoutedEventArgs e)
     {
-        return new SettingsModel
+        if (!_isReady || _updatingControls) return;
+
+        var stamp = SettingsStore.FileStamp;
+        if (!SettingsStore.TryLoad(out var settings, out var error))
         {
-            ShowLyrics = ShowLyricsToggle.IsChecked == true,
-            PositionLocked = PositionLockedToggle.IsChecked == true,
-            LyricsSource = SourceButtons.FirstOrDefault(button => button.IsChecked == true)?
-                .Tag.ToString() ?? "auto",
-            FftCaptureMode = CaptureButtons.FirstOrDefault(button => button.IsChecked == true)?
-                .Tag.ToString() ?? "player"
-        };
+            Display(settings);
+            SetStatus(error ?? "设置文件无法读取。", true);
+            return;
+        }
+
+        if (SettingsStore.FileStamp != stamp)
+        {
+            LoadSettings();
+            SetStatus("设置文件刚被其他窗口修改，请重试。", true);
+            return;
+        }
+
+        if (sender == ShowLyricsToggle) settings.ShowLyrics = ShowLyricsToggle.IsChecked == true;
+        else if (sender == PositionLockedToggle) settings.PositionLocked = PositionLockedToggle.IsChecked == true;
+        else if (sender == SourcePicker) settings.LyricsSource = SourcePicker.SelectedValue as string ?? "auto";
+        else if (sender == CapturePicker) settings.FftCaptureMode = CapturePicker.SelectedValue as string ?? "player";
+        else return;
+
+        SaveSettings(settings);
     }
 
     private void ReloadClicked(object sender, RoutedEventArgs e) => LoadSettings();
 
     private void ResetClicked(object sender, RoutedEventArgs e)
     {
-        Display(new SettingsModel());
-        StatusText.Text = "已选择默认值，点击“保存设置”后生效。";
+        SaveSettings(new SettingsModel());
     }
 
-    private void SaveClicked(object sender, RoutedEventArgs e)
+    private void SaveSettings(SettingsModel settings)
     {
-        if (SettingsStore.FileStamp != _loadedStamp)
-        {
-            StatusText.Text = "设置文件已在其他窗口修改，请先重新读取。";
-            return;
-        }
-
         try
         {
-            SettingsStore.Save(ReadControls());
-            _loadedStamp = SettingsStore.FileStamp;
-            StatusText.Text = "设置已保存，MusicBar 会在一秒内读取。";
+            SettingsStore.Save(settings);
+            Display(settings);
+            SetStatus("已自动保存，音乐栏会在一秒内更新。", false);
         }
         catch (Exception exception) when (
             exception is IOException or UnauthorizedAccessException)
         {
-            StatusText.Text = "保存失败：" + exception.Message;
+            LoadSettings();
+            SetStatus("保存失败：" + exception.Message, true);
         }
+    }
+
+    private void SetStatus(string message, bool error)
+    {
+        StatusText.Text = message;
+        StatusText.SetResourceReference(TextBlock.ForegroundProperty,
+            error ? "ErrorBrush" : "MutedBrush");
     }
 }

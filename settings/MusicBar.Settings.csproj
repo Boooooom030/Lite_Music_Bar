@@ -8,4 +8,7 @@
     <AssemblyName>MusicBar.Settings</AssemblyName>
     <ApplicationIcon>../assets/icon.ico</ApplicationIcon>
   </PropertyGroup>
+  <ItemGroup>
+    <Resource Include="../assets/icon.ico" Link="Assets/icon.ico"/>
+  </ItemGroup>
 </Project>
