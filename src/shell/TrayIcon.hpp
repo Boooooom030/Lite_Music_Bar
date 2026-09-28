@@ -30,8 +30,7 @@ public:
     void Remove();
     void SetTooltip(const std::wstring& tip);
     void ShowContextMenu(HWND hWnd, int x, int y, int currentSource,
-        bool showLyrics, bool isVisible, bool positionLocked,
-        bool settingsAvailable);
+        bool showLyrics, bool isVisible, bool positionLocked);
 
 private:
     NOTIFYICONDATAW m_nid{};

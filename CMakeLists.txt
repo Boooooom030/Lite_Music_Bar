@@ -67,6 +67,7 @@ set(SOURCES
     
     # UI & Rendering
     src/ui/Direct2DRenderer.cpp
+    src/ui/SettingsWindow.cpp
     src/ui/VolumePopup.cpp
     src/ui/ImageLoader.cpp
     

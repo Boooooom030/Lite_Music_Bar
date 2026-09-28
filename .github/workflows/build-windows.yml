@@ -44,38 +44,9 @@ jobs:
           path: release/MusicBar-Windows-x64.zip
           if-no-files-found: error
 
-  settings:
-    runs-on: windows-2022
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-
-      - name: Install .NET SDK
-        uses: actions/setup-dotnet@v6
-        with:
-          dotnet-version: 8.0.x
-
-      - name: Publish optional settings app
-        run: dotnet publish settings/MusicBar.Settings.csproj -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -p:DebugType=None -o build-settings
-
-      - name: Package settings app
-        shell: pwsh
-        run: |
-          $exe = 'build-settings/MusicBar.Settings.exe'
-          if (-not (Test-Path -LiteralPath $exe)) { throw "Missing $exe" }
-          New-Item -ItemType Directory -Path release -Force | Out-Null
-          Compress-Archive -LiteralPath $exe -DestinationPath 'release/MusicBar-Settings-Windows-x64.zip' -Force
-
-      - name: Upload settings artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: MusicBar-Settings-Windows-x64
-          path: release/MusicBar-Settings-Windows-x64.zip
-          if-no-files-found: error
-
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [build, settings]
+    needs: [build]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -86,18 +57,12 @@ jobs:
           name: MusicBar-Windows-x64
           path: release
 
-      - name: Download settings artifact
-        uses: actions/download-artifact@v8
-        with:
-          name: MusicBar-Settings-Windows-x64
-          path: release
-
       - name: Publish release asset
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" release/MusicBar-Windows-x64.zip release/MusicBar-Settings-Windows-x64.zip --clobber
+            gh release upload "$GITHUB_REF_NAME" release/MusicBar-Windows-x64.zip --clobber
           else
-            gh release create "$GITHUB_REF_NAME" release/MusicBar-Windows-x64.zip release/MusicBar-Settings-Windows-x64.zip --verify-tag --generate-notes
+            gh release create "$GITHUB_REF_NAME" release/MusicBar-Windows-x64.zip --verify-tag --generate-notes
           fi

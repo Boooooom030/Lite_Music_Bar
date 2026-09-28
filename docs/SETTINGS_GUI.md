@@ -1,12 +1,12 @@
 # 设置窗口与配置协议
 
-设置窗口位于 `settings/`，是独立的 WPF 8 程序 `MusicBar.Settings.exe`。任务栏主程序 `MusicBar.exe` 始终是原生 C++，不加载 .NET；找不到设置程序时，托盘中的“设置”入口禁用，其余功能照常运行。
+设置窗口由 `MusicBar.exe` 内的 `src/ui/SettingsWindow.*` 实现。右键音乐栏或托盘图标选择“设置”即可打开同进程窗口，不需要第二个 EXE 或 .NET 运行时。窗口使用 Win32、Direct2D 和 DirectWrite，左侧为任务栏、歌词、音频频谱分类，右侧为对应设置项。修改立即应用并保存。
 
-当前机器只有 .NET 8 SDK，因此界面使用 WPF 自定义的 Windows 设置风格控件。设置按“任务栏 / 歌词 / 音频频谱”分为左侧导航和右侧详细设置：右侧采用大标题、分组标题、每项独立的设置行与右侧操作控件，左侧搜索可筛选类别。设置页首选 Segoe UI Variable；中文字符回退到 Windows 简体中文补充字体“DengXian（等线）”，未安装时再回退到“Microsoft YaHei UI”；小字提示只在出错时显示。窗口跟随 Windows 应用亮暗主题；Windows 11 22H2 及更新版本以系统 Mica 作为底层磨砂材质，旧版 Windows 使用同主题纯色背景。卡片和侧栏使用轻透明填充，不额外引入 Windows App SDK 运行时。WPF 官方内置 Fluent 主题从 .NET 9 开始；未来升级目标框架时可替换样式，不改变下述设置协议。
+文字使用 Segoe UI Variable；简体中文 Unicode 区间明确映射到等线（DengXian），并以 Microsoft YaHei UI 为备选。界面读取 Windows 应用亮暗主题；在支持的系统上请求 Mica 窗口背景，旧版使用同主题纯色。DPI 变化时窗口和绘制内容按比例调整。
 
 ## 版本 1 协议
 
-配置文件固定为 `%LOCALAPPDATA%\MusicBar\settings.json`，UTF-8 编码，字段如下：
+配置文件固定为 `%LOCALAPPDATA%\MusicBar\settings.json`，UTF-8 编码：
 
 ```json
 {
@@ -25,25 +25,16 @@
 | `lyricsSource` | `auto`、`netease`、`qq`、`kugou`、`soda`、`lrclib` | 自动优先当前播放器，或手动指定来源 |
 | `fftCaptureMode` | `player`、`system` | 当前播放器进程音频，或系统混音 |
 
-缺失的已知字段使用默认值；未知字段忽略。未知版本、错误类型和非法枚举值会被拒绝，主程序保留当时的设置。设置文件不存在时使用默认值。旧版 Windows 无法按进程采集时，`player` 模式仍退化到系统混音。
+缺失的已知字段使用默认值；未知字段忽略。未知版本、错误类型和非法枚举值会被拒绝，主程序保留当时设置。设置文件不存在时使用默认值。旧版 Windows 无法按进程采集时，`player` 模式退化到系统混音。
 
-设置窗口修改选项后立即读取当前配置，只修改该选项，再写入同目录临时文件并原子替换原文件；读取期间若文件时间戳变化，则提示重试，避免覆盖托盘菜单刚写入的更改。重新读取与恢复默认位于左侧底部。C++ 托盘菜单也通过临时文件替换写入。主程序每秒检查文件时间戳，在 UI 线程上应用更改；歌词来源改变时重新请求当前歌曲歌词，FFT 模式改变时重新连接音频采集。
+`SettingsStore` 使用临时文件和替换操作保存配置。设置窗口的修改直接调用 `App::ApplySettings`，随后保存；托盘菜单修改会同步到已打开的设置窗口。外部程序更新文件时，主程序每秒检查时间戳并在 UI 线程应用。歌词来源改变时重新请求当前歌曲歌词，FFT 模式改变时重新连接音频采集。左侧底部提供重新读取与恢复默认。
 
 ## 构建与分发
 
-在仓库根目录执行：
-
-```powershell
-dotnet publish settings/MusicBar.Settings.csproj -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -p:DebugType=None -o build-settings
-```
-
-输出 `build-settings/MusicBar.Settings.exe` 是单文件设置程序，但仍依赖目标机器安装 .NET 8 Desktop Runtime。将它放在 `MusicBar.exe` 旁边即可启用托盘“设置”。GitHub Actions 把它作为独立的可选 ZIP 发布，不增加主程序 ZIP 的运行时依赖。
-
-设置页目前覆盖已经存在的四类开关。后续如需设备预览、实时 FFT 预览或更复杂的设置交互，再设计进程间通信；当前文件协议足以完成保存与热更新。
+设置窗口随 CMake 主目标一起构建。发布包只有 `MusicBar.exe` 和第三方许可文本。设置文件位于用户目录，不需放在 EXE 旁边。
 
 ## 参考资料
 
 - [Windows 应用设置页设计指南](https://learn.microsoft.com/en-us/windows/apps/design/app-settings/guidelines-for-app-settings)
 - [Windows Mica 材质指南](https://learn.microsoft.com/en-us/windows/apps/design/style/mica)
-- [WPF 官方 Fluent 主题（.NET 9+）](https://learn.microsoft.com/en-us/dotnet/desktop/wpf/whats-new/net90)
-- [.NET 单文件部署](https://learn.microsoft.com/en-us/dotnet/core/deploying/single-file/overview)
+- [DirectWrite 字体回退](https://learn.microsoft.com/en-us/windows/win32/api/dwrite_2/nf-dwrite_2-idwritefontfallbackbuilder-addmapping)

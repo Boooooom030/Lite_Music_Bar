@@ -4,7 +4,7 @@
 
 ## 运行边界
 
-`MusicBar.exe` 是 Windows 原生 C++20 程序。常驻任务栏的窗口、媒体控制、音频采集、歌词和渲染均在该进程内。Release 构建静态链接 MSVC 运行库；分发包中的程序本体只有一个 EXE，另附第三方许可文本。可选的 WPF 设置程序是独立进程，使用有版本号的 JSON 文件与主程序通信；详见 [SETTINGS_GUI.md](SETTINGS_GUI.md)。
+`MusicBar.exe` 是 Windows 原生 C++20 程序。任务栏窗口、设置窗口、媒体控制、音频采集、歌词和渲染均在该进程内。Release 构建静态链接 MSVC 运行库；分发包中的程序本体只有一个 EXE，另附第三方许可文本。设置使用有版本号的 JSON 文件持久化；详见 [SETTINGS_GUI.md](SETTINGS_GUI.md)。
 
 程序将窗口附着到 `Shell_TrayWnd`，窗口覆盖任务栏画布，再通过 `SetWindowRgn` 将绘制与鼠标区域裁剪到音乐栏。布局根据任务栏尺寸、通知区域和 DPI 计算，窗口内通过 Direct2D、DirectWrite 与 WIC 绘制封面、歌词、按钮和频谱。音量弹窗由独立的 Win32 窗口绘制，输出设备通过 Core Audio 枚举与切换。
 
@@ -23,7 +23,7 @@
 | 目录 | 职责 |
 | --- | --- |
 | `src/core/` | 应用生命周期、消息处理、共享类型 |
-| `settings/` | 可选 WPF 设置窗口及 JSON 写入 |
+| `src/ui/SettingsWindow.*` | 原生设置窗口，Direct2D 绘制、DirectWrite 字体和主题 |
 | `src/shell/` | 任务栏附着、裁剪、托盘菜单 |
 | `src/media/` | GSMTC、网易云来源、播放器进程解析 |
 | `src/audio/` | WASAPI、FFT、音量和输出设备 |

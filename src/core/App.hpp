@@ -11,6 +11,7 @@
 #include "lyrics/LyricsService.hpp"
 #include "ui/Direct2DRenderer.hpp"
 #include "ui/VolumePopup.hpp"
+#include "ui/SettingsWindow.hpp"
 
 namespace MusicBar {
 
@@ -53,7 +54,6 @@ private:
     void ApplySettings(const AppSettings& settings);
     void PersistSettings();
     void ReloadSettingsIfChanged();
-    std::wstring SettingsExecutablePath() const;
     void OpenSettings();
 
     static inline App* s_pInstance = nullptr;
@@ -67,6 +67,7 @@ private:
     TaskbarDock m_dock;
     Direct2DRenderer m_renderer;
     VolumePopup m_volumePopup;
+    SettingsWindow m_settingsWindow;
     MediaSession m_mediaSession;
     WasapiLoopback m_audio;
     LyricsService m_lyrics;

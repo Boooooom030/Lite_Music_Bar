@@ -4,8 +4,6 @@
 #include <windowsx.h>
 #include <algorithm>
 #include <cstdlib>
-#include <filesystem>
-#include <shellapi.h>
 #include <vector>
 
 namespace MusicBar {
@@ -68,6 +66,7 @@ void App::ApplySettings(const AppSettings& settings) {
         m_lyrics.RequestLyrics(m_currentTrack.title, m_currentTrack.artist,
             m_currentTrack.durationMs, source);
     }
+    m_settingsWindow.SetSettings(settings);
     RepaintBar();
 }
 
@@ -90,24 +89,12 @@ void App::ReloadSettingsIfChanged() {
     }
 }
 
-std::wstring App::SettingsExecutablePath() const {
-    std::wstring modulePath(32768, L'\0');
-    const DWORD length = GetModuleFileNameW(nullptr, modulePath.data(),
-        static_cast<DWORD>(modulePath.size()));
-    if (length == 0 || length >= modulePath.size()) return {};
-    modulePath.resize(length);
-    return (std::filesystem::path(modulePath).parent_path() /
-        L"MusicBar.Settings.exe").wstring();
-}
-
 void App::OpenSettings() {
-    const std::wstring path = SettingsExecutablePath();
-    if (path.empty() ||
-        reinterpret_cast<INT_PTR>(ShellExecuteW(nullptr, L"open", path.c_str(),
-            nullptr, nullptr, SW_SHOWNORMAL)) <= 32) {
-        MessageBoxW(m_hWnd, L"无法启动设置程序。请将 MusicBar.Settings.exe 放在 MusicBar.exe 旁边。",
-            L"MusicBar", MB_OK | MB_ICONWARNING);
-    }
+    m_settingsWindow.Show(m_hInstance, CurrentSettings(),
+        [this](const AppSettings& settings) {
+            ApplySettings(settings);
+            PersistSettings();
+        });
 }
 
 App::~App() {
@@ -680,14 +667,8 @@ LRESULT App::HandleMessage(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     case WM_RBUTTONUP: {
         POINT pt;
         GetCursorPos(&pt);
-        const std::wstring settingsPath = SettingsExecutablePath();
-        const DWORD settingsAttributes = settingsPath.empty()
-            ? INVALID_FILE_ATTRIBUTES : GetFileAttributesW(settingsPath.c_str());
-        const bool settingsAvailable = !settingsPath.empty() &&
-            settingsAttributes != INVALID_FILE_ATTRIBUTES &&
-            !(settingsAttributes & FILE_ATTRIBUTE_DIRECTORY);
         m_trayIcon.ShowContextMenu(hWnd, pt.x, pt.y, m_currentLyricsSource,
-            m_showLyrics, m_isVisible, m_positionLocked, settingsAvailable);
+            m_showLyrics, m_isVisible, m_positionLocked);
         return 0;
     }
 
@@ -695,14 +676,8 @@ LRESULT App::HandleMessage(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         if (lParam == WM_RBUTTONUP) {
             POINT pt;
             GetCursorPos(&pt);
-            const std::wstring settingsPath = SettingsExecutablePath();
-            const DWORD settingsAttributes = settingsPath.empty()
-                ? INVALID_FILE_ATTRIBUTES : GetFileAttributesW(settingsPath.c_str());
-            const bool settingsAvailable = !settingsPath.empty() &&
-                settingsAttributes != INVALID_FILE_ATTRIBUTES &&
-                !(settingsAttributes & FILE_ATTRIBUTE_DIRECTORY);
             m_trayIcon.ShowContextMenu(hWnd, pt.x, pt.y, m_currentLyricsSource,
-                m_showLyrics, m_isVisible, m_positionLocked, settingsAvailable);
+                m_showLyrics, m_isVisible, m_positionLocked);
         }
         return 0;
     }
@@ -719,12 +694,14 @@ LRESULT App::HandleMessage(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 
         case IDM_TOGGLE_LYRICS:
             m_showLyrics = !m_showLyrics;
+            m_settingsWindow.SetSettings(CurrentSettings());
             PersistSettings();
             RepaintBar();
             break;
 
         case IDM_LOCK_POSITION:
             m_positionLocked = !m_positionLocked;
+            m_settingsWindow.SetSettings(CurrentSettings());
             m_pressTarget = PressTarget::None;
             m_isDragging = false;
             m_suppressClickOnRelease = false;
@@ -745,6 +722,7 @@ LRESULT App::HandleMessage(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             else if (cmdId == IDM_SOURCE_SODA) selected = LyricsSource::Soda;
             else if (cmdId == IDM_SOURCE_LRCLIB) selected = LyricsSource::Lrclib;
             m_currentLyricsSource = static_cast<int>(selected);
+            m_settingsWindow.SetSettings(CurrentSettings());
             PersistSettings();
             const LyricsSource src = EffectiveLyricsSource();
             m_lastRequestedLyricsSource = src;
