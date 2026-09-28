@@ -25,7 +25,7 @@
 
         <Style x:Key="NavigationStyle" TargetType="RadioButton">
             <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
-            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="FontSize" Value="14"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="Margin" Value="0,0,0,2"/>
             <Setter Property="Template">
@@ -66,7 +66,7 @@
         <Style x:Key="SearchStyle" TargetType="TextBox">
             <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
             <Setter Property="CaretBrush" Value="{DynamicResource TextBrush}"/>
-            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontSize" Value="13"/>
             <Setter Property="Height" Value="33"/>
             <Setter Property="Template">
                 <Setter.Value>
@@ -193,7 +193,7 @@
 
         <Style x:Key="TextButtonStyle" TargetType="Button">
             <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
-            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontSize" Value="13"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="Padding" Value="8,5"/>
             <Setter Property="Template">

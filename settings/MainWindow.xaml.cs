@@ -83,11 +83,11 @@ public partial class MainWindow : Window
         PageLyrics.Visibility = page == "lyrics" ? Visibility.Visible : Visibility.Collapsed;
         PageAudio.Visibility = page == "audio" ? Visibility.Visible : Visibility.Collapsed;
 
-        (PageTitle.Text, PageDescription.Text) = page switch
+        PageTitle.Text = page switch
         {
-            "lyrics" => ("歌词", "调整同步歌词的显示和获取方式。"),
-            "audio" => ("音频频谱", "选择频谱响应的声音范围。"),
-            _ => ("任务栏", "调整任务栏中音乐栏的显示和交互。")
+            "lyrics" => "歌词",
+            "audio" => "音频频谱",
+            _ => "任务栏"
         };
         SettingsScrollViewer.ScrollToTop();
     }
@@ -127,7 +127,7 @@ public partial class MainWindow : Window
     {
         var loaded = SettingsStore.TryLoad(out var settings, out var error);
         Display(settings);
-        SetStatus(loaded ? "更改会自动保存并应用到音乐栏。" : error ?? "设置文件无法读取。", !loaded);
+        SetStatus(loaded ? string.Empty : error ?? "设置文件无法读取。", !loaded);
     }
 
     private void Display(SettingsModel settings)
@@ -187,7 +187,7 @@ public partial class MainWindow : Window
         {
             SettingsStore.Save(settings);
             Display(settings);
-            SetStatus("已自动保存，音乐栏会在一秒内更新。", false);
+            SetStatus(string.Empty, false);
         }
         catch (Exception exception) when (
             exception is IOException or UnauthorizedAccessException)
@@ -200,6 +200,7 @@ public partial class MainWindow : Window
     private void SetStatus(string message, bool error)
     {
         StatusText.Text = message;
+        StatusText.Visibility = error ? Visibility.Visible : Visibility.Collapsed;
         StatusText.SetResourceReference(TextBlock.ForegroundProperty,
             error ? "ErrorBrush" : "MutedBrush");
     }

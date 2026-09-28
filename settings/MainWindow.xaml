@@ -3,9 +3,9 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="MusicBar 设置" Icon="/Assets/icon.ico"
         Width="1000" Height="700" MinWidth="780" MinHeight="540"
-        WindowStartupLocation="CenterScreen" FontFamily="Microsoft YaHei UI"
-        FontSize="13" UseLayoutRounding="True" SnapsToDevicePixels="True"
-        TextOptions.TextFormattingMode="Display"
+        WindowStartupLocation="CenterScreen" FontFamily="DengXian, Microsoft YaHei UI"
+        FontSize="14" UseLayoutRounding="True" SnapsToDevicePixels="True"
+        TextOptions.TextFormattingMode="Ideal"
         Background="{DynamicResource WindowBrush}">
     <Grid Background="{DynamicResource WindowOverlayBrush}">
         <Grid.ColumnDefinitions>
@@ -25,17 +25,15 @@
                 <StackPanel Orientation="Horizontal" Margin="9,0,0,30">
                     <Image Source="/Assets/icon.ico" Width="42" Height="42"
                            VerticalAlignment="Center"/>
-                    <StackPanel Margin="12,0,0,0" VerticalAlignment="Center">
-                        <TextBlock Text="MusicBar" FontFamily="Segoe UI" FontSize="17" FontWeight="SemiBold"/>
-                        <TextBlock Text="任务栏音乐组件" FontSize="11"
-                                   Foreground="{DynamicResource MutedBrush}" Margin="0,2,0,0"/>
-                    </StackPanel>
+                    <TextBlock Text="MusicBar" FontFamily="Segoe UI Variable, Segoe UI"
+                               FontSize="17" FontWeight="SemiBold" Margin="12,0,0,0"
+                               VerticalAlignment="Center"/>
                 </StackPanel>
 
                 <Grid Grid.Row="1" Margin="1,0,1,22">
                     <TextBox x:Name="SearchBox" Style="{StaticResource SearchStyle}"
                              AutomationProperties.Name="查找设置" TextChanged="SearchTextChanged"/>
-                    <TextBlock x:Name="SearchHint" Text="查找设置" FontSize="12"
+                    <TextBlock x:Name="SearchHint" Text="查找设置" FontSize="13"
                                Foreground="{DynamicResource MutedBrush}"
                                Margin="12,0,0,0" VerticalAlignment="Center"
                                IsHitTestVisible="False"/>
@@ -71,14 +69,12 @@
                             <TextBlock Text="音频频谱" Margin="13,0,0,0" VerticalAlignment="Center"/>
                         </StackPanel>
                     </RadioButton>
-                    <TextBlock x:Name="NoSearchResults" Text="没有找到匹配的设置" FontSize="12"
+                    <TextBlock x:Name="NoSearchResults" Text="没有找到匹配的设置" FontSize="13"
                                Foreground="{DynamicResource MutedBrush}" Margin="15,12,0,0"
                                Visibility="Collapsed"/>
                 </StackPanel>
 
                 <StackPanel Grid.Row="3" Margin="4,0,4,0">
-                    <TextBlock Text="更改会自动保存" FontSize="11"
-                               Foreground="{DynamicResource MutedBrush}" Margin="8,0,0,7"/>
                     <StackPanel Orientation="Horizontal">
                         <Button Content="重新读取" Style="{StaticResource TextButtonStyle}"
                                 Click="ReloadClicked"/>
@@ -93,10 +89,7 @@
                       VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
             <StackPanel Margin="42,31,42,38" MaxWidth="830" HorizontalAlignment="Stretch">
                 <TextBlock x:Name="PageTitle" Text="任务栏" FontSize="30"
-                           FontWeight="SemiBold" Margin="0,0,0,5"/>
-                <TextBlock x:Name="PageDescription" Text="调整任务栏中音乐栏的显示和交互。"
-                           Foreground="{DynamicResource MutedBrush}" FontSize="12"
-                           TextWrapping="Wrap" Margin="0,0,0,33"/>
+                           FontWeight="SemiBold" Margin="0,0,0,32"/>
 
                 <StackPanel x:Name="PageTaskbar">
                     <TextBlock Text="音乐栏" FontSize="17" FontWeight="SemiBold" Margin="0,0,0,12"/>
@@ -110,21 +103,14 @@
                             <Path Width="20" Height="20" Stretch="Uniform" Stroke="{DynamicResource TextBrush}"
                                   StrokeThickness="1.5" VerticalAlignment="Center"
                                   Data="M 4,3 L 16,3 16,17 4,17 Z M 7,8 L 13,8 M 7,12 L 13,12"/>
-                            <StackPanel Grid.Column="1" Margin="13,0,15,0" VerticalAlignment="Center">
-                                <TextBlock Text="锁定位置" FontWeight="SemiBold"/>
-                                <TextBlock Text="锁定后无法拖动音乐栏，播放和音量操作仍可使用。"
-                                           Foreground="{DynamicResource MutedBrush}" FontSize="11"
-                                           TextWrapping="Wrap" Margin="0,4,0,0"/>
-                            </StackPanel>
+                            <TextBlock Grid.Column="1" Text="锁定位置" FontWeight="SemiBold"
+                                       Margin="13,0,15,0" VerticalAlignment="Center"/>
                             <CheckBox x:Name="PositionLockedToggle" Grid.Column="2"
                                       Style="{StaticResource ToggleStyle}" Click="SettingChanged"
                                       AutomationProperties.Name="锁定音乐栏位置"
                                       VerticalAlignment="Center"/>
                         </Grid>
                     </Border>
-                    <TextBlock Text="音乐栏会随任务栏大小和屏幕缩放自动调整位置。"
-                               Foreground="{DynamicResource MutedBrush}" FontSize="11"
-                               Margin="2,13,0,0" TextWrapping="Wrap"/>
                 </StackPanel>
 
                 <StackPanel x:Name="PageLyrics" Visibility="Collapsed">
@@ -139,12 +125,8 @@
                             <Path Width="20" Height="20" Stretch="Uniform" Stroke="{DynamicResource TextBrush}"
                                   StrokeThickness="1.5" VerticalAlignment="Center"
                                   Data="M 3,4 L 17,4 M 3,9 L 14,9 M 3,14 L 11,14"/>
-                            <StackPanel Grid.Column="1" Margin="13,0,15,0" VerticalAlignment="Center">
-                                <TextBlock Text="显示同步歌词" FontWeight="SemiBold"/>
-                                <TextBlock Text="在歌曲信息下方显示当前歌词。"
-                                           Foreground="{DynamicResource MutedBrush}" FontSize="11"
-                                           TextWrapping="Wrap" Margin="0,4,0,0"/>
-                            </StackPanel>
+                            <TextBlock Grid.Column="1" Text="显示同步歌词" FontWeight="SemiBold"
+                                       Margin="13,0,15,0" VerticalAlignment="Center"/>
                             <CheckBox x:Name="ShowLyricsToggle" Grid.Column="2"
                                       Style="{StaticResource ToggleStyle}" Click="SettingChanged"
                                       AutomationProperties.Name="显示同步歌词"
@@ -163,16 +145,13 @@
                             <Path Width="20" Height="20" Stretch="Uniform" Stroke="{DynamicResource TextBrush}"
                                   StrokeThickness="1.5" VerticalAlignment="Center"
                                   Data="M 4,2 L 16,2 16,18 4,18 Z M 7,6 L 13,6 M 7,10 L 13,10 M 7,14 L 11,14"/>
-                            <StackPanel Grid.Column="1" Margin="13,15,18,15" VerticalAlignment="Center">
-                                <TextBlock Text="歌词来源" FontWeight="SemiBold"/>
-                                <TextBlock Text="自动模式优先查询当前播放器对应的平台。"
-                                           Foreground="{DynamicResource MutedBrush}" FontSize="11"
-                                           TextWrapping="Wrap" Margin="0,4,0,0"/>
-                            </StackPanel>
+                            <TextBlock Grid.Column="1" Text="歌词来源" FontWeight="SemiBold"
+                                       Margin="13,0,18,0" VerticalAlignment="Center"/>
                             <ComboBox x:Name="SourcePicker" Grid.Column="2" Width="150"
                                       Style="{StaticResource PickerStyle}" SelectedValuePath="Tag"
                                       SelectionChanged="SettingChanged" VerticalAlignment="Center"
-                                      AutomationProperties.Name="歌词来源">
+                                      AutomationProperties.Name="歌词来源"
+                                      ToolTip="自动选择会优先查询当前播放器对应的平台">
                                 <ComboBoxItem Content="自动选择" Tag="auto" Style="{StaticResource PickerItemStyle}"/>
                                 <ComboBoxItem Content="网易云音乐" Tag="netease" Style="{StaticResource PickerItemStyle}"/>
                                 <ComboBoxItem Content="QQ 音乐" Tag="qq" Style="{StaticResource PickerItemStyle}"/>
@@ -196,29 +175,23 @@
                             <Path Width="20" Height="20" Stretch="Uniform" Stroke="{DynamicResource TextBrush}"
                                   StrokeThickness="1.5" VerticalAlignment="Center"
                                   Data="M 2,11 L 5,11 7,5 10,16 13,7 15,11 18,11"/>
-                            <StackPanel Grid.Column="1" Margin="13,15,18,15" VerticalAlignment="Center">
-                                <TextBlock Text="FFT 音频来源" FontWeight="SemiBold"/>
-                                <TextBlock Text="选择频谱跟随当前播放器，还是响应系统中的所有声音。"
-                                           Foreground="{DynamicResource MutedBrush}" FontSize="11"
-                                           TextWrapping="Wrap" Margin="0,4,0,0"/>
-                            </StackPanel>
+                            <TextBlock Grid.Column="1" Text="FFT 音频来源" FontWeight="SemiBold"
+                                       Margin="13,0,18,0" VerticalAlignment="Center"/>
                             <ComboBox x:Name="CapturePicker" Grid.Column="2" Width="150"
                                       Style="{StaticResource PickerStyle}" SelectedValuePath="Tag"
                                       SelectionChanged="SettingChanged" VerticalAlignment="Center"
-                                      AutomationProperties.Name="FFT 音频来源">
+                                      AutomationProperties.Name="FFT 音频来源"
+                                      ToolTip="旧版 Windows 无法按进程采集时，会使用系统混音">
                                 <ComboBoxItem Content="当前播放器" Tag="player" Style="{StaticResource PickerItemStyle}"/>
                                 <ComboBoxItem Content="系统混音" Tag="system" Style="{StaticResource PickerItemStyle}"/>
                             </ComboBox>
                         </Grid>
                     </Border>
-                    <TextBlock Text="较旧的 Windows 版本不支持按进程采集时，会自动使用系统混音。"
-                               Foreground="{DynamicResource MutedBrush}" FontSize="11"
-                               Margin="2,13,0,0" TextWrapping="Wrap"/>
                 </StackPanel>
 
-                <TextBlock x:Name="StatusText" Text="更改会自动保存并应用到音乐栏。"
-                           Foreground="{DynamicResource MutedBrush}" FontSize="11"
-                           Margin="2,29,0,0" TextWrapping="Wrap"/>
+                <TextBlock x:Name="StatusText" Foreground="{DynamicResource ErrorBrush}"
+                           FontSize="13" Margin="2,24,0,0" TextWrapping="Wrap"
+                           Visibility="Collapsed"/>
             </StackPanel>
         </ScrollViewer>
     </Grid>
