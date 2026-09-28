@@ -642,10 +642,12 @@ LRESULT App::HandleMessage(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                 released == ButtonType::OutputDevice) {
                 ShowOutputDeviceMenu();
             } else if (target == PressTarget::Previous &&
-                released == ButtonType::Prev) {
+                released == ButtonType::Prev &&
+                !m_currentTrack.title.empty()) {
                 m_mediaSession.PreviousTrack();
             } else if (target == PressTarget::Next &&
-                released == ButtonType::Next) {
+                released == ButtonType::Next &&
+                !m_currentTrack.title.empty()) {
                 m_mediaSession.NextTrack();
             }
         }

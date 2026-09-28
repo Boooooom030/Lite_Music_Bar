@@ -3,7 +3,8 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="MusicBar 设置" Icon="/Assets/icon.ico"
         Width="1000" Height="700" MinWidth="780" MinHeight="540"
-        WindowStartupLocation="CenterScreen" FontFamily="DengXian, Microsoft YaHei UI"
+        WindowStartupLocation="CenterScreen"
+        FontFamily="Segoe UI Variable, DengXian, Microsoft YaHei UI"
         FontSize="14" UseLayoutRounding="True" SnapsToDevicePixels="True"
         TextOptions.TextFormattingMode="Ideal"
         Background="{DynamicResource WindowBrush}">

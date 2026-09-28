@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <iterator>
 
 namespace MusicBar {
 
@@ -834,16 +835,15 @@ void Direct2DRenderer::Render(
     m_rcMiddle = D2D1::RectF(middleLeft, 0.0f, middleRight, barHeight);
 
     // Draw the text first; the middle hover surface is composited later.
-    float textAlpha = !track.title.empty()
-        ? 1.0f - eased
-        : 1.0f;
+    float textAlpha = 1.0f - eased;
     if (textAlpha > 0.01f) {
         m_pTextPrimaryBrush->SetOpacity(m_baseTextPrimaryAlpha * textAlpha);
         m_pTextSecondaryBrush->SetOpacity(m_baseTextSecondaryAlpha * textAlpha);
         m_pLyricHighlightBrush->SetOpacity(m_baseLyricAlpha * textAlpha);
 
         if (middleWidth > 30.0f * dpiScale) {
-            const int nextLyricIndex = showLyrics && lyrics.activeIndex >= 0 &&
+            const int nextLyricIndex = !track.title.empty() && showLyrics &&
+                lyrics.activeIndex >= 0 &&
                 lyrics.activeIndex < static_cast<int>(lyrics.lines.size())
                 ? lyrics.activeIndex : -1;
             const std::wstring nextLyricText = nextLyricIndex >= 0
@@ -876,7 +876,15 @@ void Direct2DRenderer::Render(
             D2D1_RECT_F detailRect = D2D1::RectF(
                 middleLeft, titleRect.bottom, middleRight, titleRect.bottom + lineH);
 
-            if (!track.title.empty()) {
+            if (track.title.empty()) {
+                constexpr wchar_t idleText[] = L"暂无音乐播放";
+                const auto idleRect = D2D1::RectF(middleLeft, 0.0f,
+                    middleRight, barHeight);
+                m_pRenderTarget->DrawText(idleText,
+                    static_cast<UINT32>(std::size(idleText) - 1),
+                    m_pTitleFormat.Get(), idleRect,
+                    m_pTextPrimaryBrush.Get());
+            } else {
                 std::wstring displayTitle = track.title;
                 if (!track.artist.empty()) displayTitle += L" - " + track.artist;
                 m_pRenderTarget->DrawText(displayTitle.c_str(),
@@ -1085,18 +1093,16 @@ void Direct2DRenderer::Render(
                 };
                 drawHover(m_rcBtnOutputDevice, 0);
                 DrawVectorStereo(m_rcBtnOutputDevice);
-                if (!track.title.empty()) {
-                    m_rcBtnPrev = D2D1::RectF(m_rcBtnOutputDevice.right + buttonGap,
-                        buttonY, m_rcBtnOutputDevice.right + buttonGap + buttonSize,
-                        buttonY + buttonSize);
-                    m_rcBtnNext = D2D1::RectF(m_rcBtnPrev.right + buttonGap,
-                        buttonY, m_rcBtnPrev.right + buttonGap + buttonSize,
-                        buttonY + buttonSize);
-                    drawHover(m_rcBtnPrev, 1);
-                    DrawVectorPrev(m_rcBtnPrev);
-                    drawHover(m_rcBtnNext, 2);
-                    DrawVectorNext(m_rcBtnNext);
-                }
+                m_rcBtnPrev = D2D1::RectF(m_rcBtnOutputDevice.right + buttonGap,
+                    buttonY, m_rcBtnOutputDevice.right + buttonGap + buttonSize,
+                    buttonY + buttonSize);
+                m_rcBtnNext = D2D1::RectF(m_rcBtnPrev.right + buttonGap,
+                    buttonY, m_rcBtnPrev.right + buttonGap + buttonSize,
+                    buttonY + buttonSize);
+                drawHover(m_rcBtnPrev, 1);
+                DrawVectorPrev(m_rcBtnPrev);
+                drawHover(m_rcBtnNext, 2);
+                DrawVectorNext(m_rcBtnNext);
             }
         }
         hr = m_pRenderTarget->EndDraw();
