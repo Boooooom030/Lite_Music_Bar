@@ -4,6 +4,7 @@
 #include <memory>
 #include "Types.hpp"
 #include "SettingsStore.hpp"
+#include "AnimationClock.hpp"
 #include "shell/TaskbarDock.hpp"
 #include "shell/TrayIcon.hpp"
 #include "media/MediaSession.hpp"
@@ -48,6 +49,7 @@ private:
     LRESULT HandleMessage(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
     void RepaintBar();
+    void OnAnimationTick();
     RECT GetSpectrumScreenRect() const;
     void ShowOutputDeviceMenu();
     AppSettings CurrentSettings() const;
@@ -63,6 +65,7 @@ private:
     HANDLE m_hSingleInstanceMutex = nullptr;
     HWINEVENTHOOK m_hTaskbarHook = nullptr;
     UINT m_msgTaskbarCreated = 0;
+    AnimationClock m_animationClock;
 
     TaskbarDock m_dock;
     Direct2DRenderer m_renderer;

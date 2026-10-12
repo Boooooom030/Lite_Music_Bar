@@ -37,6 +37,7 @@ set(SOURCES
     # Core
     src/main.cpp
     src/core/App.cpp
+    src/core/AnimationClock.cpp
     src/core/SettingsStore.cpp
     
     # Shell & Taskbar

@@ -10,6 +10,10 @@ namespace MusicBar {
 
 constexpr UINT WM_APP_TRACK_CHANGED = WM_APP + 102;
 constexpr UINT WM_APP_LYRICS_LOADED = WM_APP + 103;
+constexpr UINT WM_APP_ANIMATION_TICK = WM_APP + 104;
+
+// ~60 FPS: one animation frame per display refresh on a 60 Hz panel.
+constexpr int kAnimationIntervalMs = 16;
 
 namespace {
 bool PassedDragThreshold(const POINT& start, const POINT& current) {
@@ -234,8 +238,13 @@ bool App::Initialize(HINSTANCE hInstance) {
         WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS
     );
 
-    // Setup timers: 60 FPS for smooth spectrum / lyrics sync, 1s for taskbar watchdog
-    SetTimer(m_hWnd, 1, 16, nullptr);
+    // Animation tick: a high-resolution waitable timer posts WM_APP_ANIMATION_TICK
+    // at the requested interval. SetTimer is only a fallback, because the system
+    // quantizes it (a 16 ms request lands on 25 ms here).
+    if (!m_animationClock.Start(m_hWnd, WM_APP_ANIMATION_TICK, kAnimationIntervalMs)) {
+        SetTimer(m_hWnd, 1, kAnimationIntervalMs, nullptr);
+    }
+    // 1s taskbar watchdog timer.
     SetTimer(m_hWnd, 2, 1000, nullptr);
 
     RepaintBar();
@@ -249,6 +258,36 @@ int App::Run() {
         DispatchMessageW(&msg);
     }
     return static_cast<int>(msg.wParam);
+}
+
+// One animation frame: advance the lyric timeline and the spectrum, then repaint
+// when anything is still moving. Called from the animation clock (and from the
+// SetTimer fallback).
+void App::OnAnimationTick() {
+    if (!m_currentTrack.title.empty()) {
+        int64_t posMs = m_currentTrack.GetCurrentInterpolatedPositionMs();
+        m_lyrics.UpdatePosition(posMs);
+        m_currentLyrics = m_lyrics.GetCurrentLyrics();
+    }
+
+    m_currentSpectrum = m_audio.GetSpectrum();
+    if (m_audio.GetCaptureMode() == AudioCaptureMode::PlayerProcess &&
+        (m_currentTrack.title.empty() || !m_currentTrack.isPlaying)) {
+        m_currentSpectrum = {};
+    }
+    const auto now = std::chrono::steady_clock::now();
+    if (m_currentSpectrum.hasAudio) m_lastAudioActivity = now;
+    m_currentSpectrum.hasAudio = m_lastAudioActivity.time_since_epoch().count() != 0 &&
+        now - m_lastAudioActivity < std::chrono::milliseconds(700);
+    const bool spectrumIsMoving = std::any_of(
+        m_currentSpectrum.bands.begin(), m_currentSpectrum.bands.end(),
+        [](float level) { return level > 0.01f; });
+    if (m_currentTrack.isPlaying || m_currentSpectrum.hasAudio ||
+        spectrumIsMoving || m_isHovered ||
+        (m_isCoverHovered && !m_currentTrack.title.empty()) ||
+        m_renderer.HasPendingAnimation()) {
+        RepaintBar();
+    }
 }
 
 void App::RepaintBar() {
@@ -362,33 +401,14 @@ LRESULT App::HandleMessage(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     }
 
     switch (msg) {
+    case WM_APP_ANIMATION_TICK:
+        m_animationClock.Consumed();
+        OnAnimationTick();
+        return 0;
+
     case WM_TIMER: {
         if (wParam == 1) {
-            // 60 FPS tick: update spectrum & lyric timeline
-            if (!m_currentTrack.title.empty()) {
-                int64_t posMs = m_currentTrack.GetCurrentInterpolatedPositionMs();
-                m_lyrics.UpdatePosition(posMs);
-                m_currentLyrics = m_lyrics.GetCurrentLyrics();
-            }
-
-            m_currentSpectrum = m_audio.GetSpectrum();
-            if (m_audio.GetCaptureMode() == AudioCaptureMode::PlayerProcess &&
-                (m_currentTrack.title.empty() || !m_currentTrack.isPlaying)) {
-                m_currentSpectrum = {};
-            }
-            const auto now = std::chrono::steady_clock::now();
-            if (m_currentSpectrum.hasAudio) m_lastAudioActivity = now;
-            m_currentSpectrum.hasAudio = m_lastAudioActivity.time_since_epoch().count() != 0 &&
-                now - m_lastAudioActivity < std::chrono::milliseconds(700);
-            const bool spectrumIsMoving = std::any_of(
-                m_currentSpectrum.bands.begin(), m_currentSpectrum.bands.end(),
-                [](float level) { return level > 0.01f; });
-            if (m_currentTrack.isPlaying || m_currentSpectrum.hasAudio ||
-                spectrumIsMoving || m_isHovered ||
-                (m_isCoverHovered && !m_currentTrack.title.empty()) ||
-                m_renderer.HasPendingAnimation()) {
-                RepaintBar();
-            }
+            OnAnimationTick();
         } else if (wParam == 2) {
             // 1s watchdog timer: re-dock or update layout
             ReloadSettingsIfChanged();
@@ -752,6 +772,7 @@ LRESULT App::HandleMessage(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     }
 
     case WM_DESTROY: {
+        m_animationClock.Stop();
         m_volumePopup.Hide();
         KillTimer(hWnd, 1);
         KillTimer(hWnd, 2);
