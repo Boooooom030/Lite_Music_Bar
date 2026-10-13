@@ -34,7 +34,7 @@ Copy-Item -LiteralPath $exe -Destination "$portable/MusicBar.exe"
 Copy-Item -LiteralPath "$repo/assets/portable/README.txt" -Destination "$portable/README.txt"
 Copy-Item -LiteralPath "$repo/third_party/nlohmann/LICENSE.MIT" -Destination "$licenses/nlohmann-json.MIT.txt"
 Copy-Item -LiteralPath "$repo/third_party/miniz/LICENSE.MIT" -Destination "$licenses/miniz.MIT.txt"
-Copy-Item -LiteralPath "$repo/docs/THIRD_PARTY.md" -Destination "$licenses/THIRD_PARTY.md"
+Copy-Item -LiteralPath "$repo/third_party/THIRD_PARTY.md" -Destination "$licenses/THIRD_PARTY.md"
 Copy-Item -LiteralPath "$SdkRoot/sdk/FluentQt/share/licenses/FluentQt" -Destination "$licenses/FluentQt" -Recurse
 $qtShare = Join-Path $SdkRoot 'installed/x64-windows-static-release/share'
 foreach ($required in @('qtbase', 'harfbuzz', 'freetype', 'libpng', 'libjpeg-turbo', 'zlib')) {

@@ -8,6 +8,12 @@ release/
 # Portable runtime data
 data/
 
+# Local project notes and agent instructions
+/docs/
+/AGENTS.md
+/LYRICS_TIMING_FIX.md
+/LYRICS_TIMEING_FIX.md
+
 # Visual Studio temporary files
 .vs/
 *.user

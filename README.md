@@ -12,11 +12,11 @@ MusicBar 是一个嵌入 Windows 任务栏的原生音乐栏。左侧显示封�
 
 ## 下载与构建
 
-仓库发布后，可在 [Releases](../../releases) 下载 `MusicBar-Windows-x64.zip`，先解压整个 `MusicBar` 文件夹，再运行其中的 `MusicBar.exe`。任务栏音乐栏和设置窗口都在这一个 EXE 中；压缩包另附使用说明、构建信息和第三方许可文本。无需安装 .NET 或 Visual C++ 运行库。推送 `v` 开头的版本标签后，GitHub Actions 会自动构建、测试、打包，并创建带 ZIP 和 SHA-256 校验文件的 Release；普通分支推送和 PR 不触发构建。发布命令、依赖准备、缓存与本地复现见 [CI 构建说明](docs/CI_BUILD.md)。
+仓库发布后，可在 [Releases]() 下载 `MusicBar-Windows-x64.zip`，先解压整个 `MusicBar` 文件夹，再运行其中的 `MusicBar.exe`。任务栏音乐栏和设置窗口都在这一个 EXE 中；压缩包另附使用说明、构建信息和第三方许可文本。无需安装 .NET 或 Visual C++ 运行库。推送 `v` 开头的版本标签后，GitHub Actions 会自动构建、测试、打包，并创建带 ZIP 和 SHA-256 校验文件的 Release；普通分支推送和 PR 不触发构建。发布命令、依赖准备、缓存与本地复现见 [CI 构建说明]()。
 
 配置保存在 EXE 旁的 `data/settings.json`，不写入用户 AppData，也不读取旧版配置。歌词、封面和渲染缓存只在内存中，退出即释放。请将整个程序目录放到可写的位置；从快捷方式或其他工作目录启动也会使用 EXE 所在目录。更新时先退出程序，替换 EXE 并保留 `data`；删除时从托盘退出，然后删除整个解压目录，配置会一并删除。仅删除下载的 ZIP 不会清理已解压的文件。
 
-需要 MSVC C++ 工具集、Windows SDK、CMake 3.28+、Ninja，以及 Qt 6.11.2 / Fluent-Qt v1.10.0 静态 Release SDK。Qt Gui 必须启用 HarfBuzz。SDK 默认位于 `~/Storage/tool/Qt-FluentQt`，准备方法和路径见 [环境记录](docs/FLUENT_QT_ENVIRONMENT.md)。
+需要 MSVC C++ 工具集、Windows SDK、CMake 3.28+、Ninja，以及 Qt 6.11.2 / Fluent-Qt v1.10.0 静态 Release SDK。Qt Gui 必须启用 HarfBuzz。SDK 默认位于 `~/Storage/tool/Qt-FluentQt`，准备方法和路径见 [环境记录]()。
 
 ```powershell
 cmd /d /c scripts\build-qt-release.cmd
@@ -39,10 +39,10 @@ ctest --test-dir build-qt-review --output-on-failure
 
 ## 项目文档
 
-- [当前架构与源码目录](docs/ARCHITECTURE.md)
-- [待办与人工验证](docs/ROADMAP.md)
-- [设置窗口与配置协议](docs/SETTINGS_GUI.md)
-- [第三方组件与许可](docs/THIRD_PARTY.md)
-- [GitHub Actions 构建与便携 ZIP](docs/CI_BUILD.md)
+- [当前架构与源码目录]()
+- [待办与人工验证]()
+- [设置窗口与配置协议]()
+- [第三方组件与许可]()
+- [GitHub Actions 构建与便携 ZIP]()
 
 项目自身目前未设置开源许可证；第三方组件仍遵循各自许可。
