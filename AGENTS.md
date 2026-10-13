@@ -87,6 +87,10 @@ MusicBar/
   Qt Gui must include HarfBuzz; disabling it makes the supplementary-plane Fluent
   icons invisible. The application build checks this feature and SettingsUiTests
   verifies actual icon pixels, not just successful font registration.
+  The Windows CI SDK must build Qt with `FEATURE_cxx20=ON` (set in the custom
+  vcpkg triplet). MSVC 19.4x otherwise links a C++17 Qt WinRT implementation
+  against the C++20 app and fails with `_COROUTINE_ABI` / LNK2038. Do not suppress
+  the mismatch or lower the application's language standard; build a matching SDK.
 
 ### Command-Line Build Commands
 

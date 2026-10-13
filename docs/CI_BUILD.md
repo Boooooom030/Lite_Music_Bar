@@ -2,6 +2,8 @@
 
 工作流为 `.github/workflows/build-windows.yml`，在分支推送、PR 和手动触发时构建；`v*` 标签在构建与测试成功后发布 ZIP 和 SHA-256 附件。使用 Windows Server 2022 runner、MSVC x64、Ninja、静态 `/MT` Release，与 `scripts/build-qt-release.cmd` 共用应用构建入口。
 
+`scripts/ci/initialize-msvc.ps1` 使用系统 Visual Studio Installer 和 `vcvars64.bat` 初始化 x64 工具链，只导出编译器／SDK 环境到 `GITHUB_ENV`。避免依赖旧 Node 20 的 MSVC 初始化 action；不导出凭据或 GitHub runner 控制变量。
+
 ## 依赖准备
 
 旧工作流未安装 Qt／Fluent-Qt，直接配置 Visual Studio 工程，无法满足当前 `find_package`。现在由 `scripts/ci/prepare-qt-sdk.ps1` 在 `build-ci-sdk` 中准备以下固定依赖：
@@ -67,8 +69,10 @@ ctest --test-dir build-ci --output-on-failure --no-tests=error
 
 ## 验证记录
 
-2026-10-13，本机使用已构建的 Qt 6.11.2 依赖，在独立 SDK 目录重新构建 FluentQt 核心，再由标准脚本构建应用。最终八项 CTest 和 actionlint 1.7.12 检查通过，配置测试包括中文路径、工作目录变化和被阻止的保存路径；确认不存在 AppData 写入。SDK 缓存复用校验通过；依赖清单另以 vcpkg dry-run 确认能解析 Qt 6.11.2 和 HarfBuzz，没有以 dry-run 声称完成冷启动编译。
+2026-10-13，本机使用已构建的 Qt 6.11.2 依赖，在独立 SDK 目录重新构建 FluentQt 核心，再由标准脚本构建应用。最终八项 CTest 和 actionlint 1.7.12 检查通过，配置测试包括中文路径、工作目录变化和被阻止的保存路径；确认不存在 AppData 写入。额外使用没有 `vcpkg.exe` 的全新 vcpkg checkout 模拟完整 SDK 缓存，独立构建与八项 CTest 通过；本机模拟原生程序返回 `-1`，确认 CMD 构建脚本返回失败且不打印成功输出。依赖清单另以 vcpkg dry-run 确认能解析 Qt 6.11.2 和 HarfBuzz，没有以 dry-run 声称完成冷启动编译。
 
 最终 EXE 为 29,237,760 字节，ZIP 为 12,984,042 字节；归档检查确认只有一个 EXE，没有 DLL／测试程序或开发机数据，包含 34 个说明、许可与运行文件。ZIP SHA-256 与旁附校验文件一致。本机构建树更新并启动了新的便携版 MusicBar；旧用户目录清理被自动审批拦截，详见 ROADMAP。
 
-2026-10-13 已将当前源码推送到 `Boooooom030/Lite_Music_Bar` 的 `main`。首次 [真实 CI](https://github.com/Boooooom030/Lite_Music_Bar/actions/runs/38375858961) 成功构建／缓存 SDK，但链接 MusicBar 时发现上述协程 ABI 冲突；本机 MSVC 19.5x 的通过结果不能替代 MSVC 19.4x CI 验证。已修正 Qt 构建标准、缓存后的 DLL 部署和负数退出码处理，后续运行结果待记录；标签发布仍需另行核对。
+2026-10-13 已将当前源码推送到 `Boooooom030/Lite_Music_Bar` 的 `main`。首次 [真实 CI](https://github.com/Boooooom030/Lite_Music_Bar/actions/runs/38375858961) 成功构建／缓存 SDK，但链接 MusicBar 时发现上述协程 ABI 冲突；本机 MSVC 19.5x 的通过结果不能替代 MSVC 19.4x CI 验证。
+
+修正后的提交 `a65c9d7` 在 [C++20 SDK 冷启动运行](https://github.com/Boooooom030/Lite_Music_Bar/actions/runs/38381039523) 中成功完成依赖准备、应用构建、全部八项 CTest、ZIP 打包和上传。已下载 Actions 产物检查：EXE 为 28,945,408 字节，便携 ZIP 为 12,915,971 字节，31 个文件，只有一个运行 EXE，没有 DLL 或用户数据；`build-info.json` 的源码 commit 和 Qt C++20 标记正确，ZIP SHA-256 与旁附文件一致。新 MSVC 初始化脚本及完整 SDK 缓存的远端复用在后续运行核对；标签发布仍需另行验证。

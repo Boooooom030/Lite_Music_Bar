@@ -32,9 +32,7 @@ jobs:
           persist-credentials: false
 
       - name: Initialize MSVC x64
-        uses: ilammy/msvc-dev-cmd@v1.13.0
-        with:
-          arch: x64
+        run: ./scripts/ci/initialize-msvc.ps1
 
       - name: Identify SDK toolchain
         id: toolchain

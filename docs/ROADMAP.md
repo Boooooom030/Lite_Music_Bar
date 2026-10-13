@@ -10,7 +10,9 @@
 - [x] 修复当前 Qt 版 CI：固定依赖源码版本、准备／缓存静态 Qt 与 FluentQt 核心 SDK、复用 Ninja 构建脚本、检查 EXE 大小与运行库依赖、保存失败诊断；修复标签发布 job 的仓库定位。actionlint 与独立本机构建／八项 CTest／ZIP 内容和 SHA-256 验证通过，见 [CI_BUILD.md](CI_BUILD.md)。
 - [x] 便携 ZIP 使用单独的 `MusicBar` 解压目录；配置和原子保存临时文件位于 EXE 旁 `data`，不使用工作目录或 AppData，不迁移旧版配置。内存缓存保持内存，不新增磁盘日志或缓存。回归覆盖中文目录、工作目录变化及保存失败；本机运行版本已更新。
 - [ ] 清理本机旧 `AppData/Local/MusicBar` 目录：自动审批拒绝删除已确认的 `settings.json`／`instr.log`，目前未删除；新版本不再使用该目录。
-- [ ] 首次推送到 GitHub 后确认 Windows 工作流运行成功，并验证下载的 ZIP 可启动。
+- [x] 当前源码推送到 GitHub `main`；C++20 SDK 冷启动工作流构建、八项 CTest、便携 ZIP 打包与上传成功，下载产物的目录、单 EXE、版本信息和 SHA-256 检查通过，见 [真实运行](https://github.com/Boooooom030/Lite_Music_Bar/actions/runs/38381039523)。
+- [ ] 验证新的 MSVC 初始化与 SDK 缓存命中后的远端构建。
+- [ ] 在目标 Windows 10/11 上人工启动下载的 CI ZIP 并检查任务栏与播放器功能。
 - [ ] 创建版本标签后确认自动生成的 Release 附件。
 
 ## 人工功能验证
