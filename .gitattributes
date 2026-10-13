@@ -15,5 +15,11 @@ CMakeLists.txt text eol=lf
 *.manifest text eol=lf
 *.txt text eol=lf
 *.MIT text eol=lf
+*.cmake text eol=lf
+*.json text eol=lf
+*.ps1 text eol=lf
+*.cmd text eol=crlf
 *.png binary
+*.jpg binary
+*.jpeg binary
 *.ico binary

@@ -2,6 +2,10 @@
 
 #include <windows.h>
 #include <d2d1_1.h>
+#include <d2d1effects.h>
+#include <d3d11.h>
+#include <dcomp.h>
+#include <dxgi1_2.h>
 #include <dwrite_1.h>
 #include <wincodec.h>
 #include <wrl/client.h>
@@ -16,16 +20,21 @@
 
 namespace MusicBar {
 
+// Draws the taskbar bar with Direct2D on a Direct3D 11 device and presents the
+// frame through a DirectComposition swap chain, so DWM paces presentation and
+// the surface is composited on the GPU. The swap chain supplies per-pixel alpha;
+// the host has no GDI redirection bitmap, and TaskbarDock bounds mouse input
+// with the window region.
 class Direct2DRenderer {
 public:
     Direct2DRenderer();
     ~Direct2DRenderer();
 
     bool Initialize(HWND hWnd);
-    void Resize(UINT width, UINT height);
-    void UpdateTheme();
+    HRESULT Resize(UINT width, UINT height);
+    HRESULT UpdateTheme();
     bool IsLightTheme() const { return m_isLightTheme; }
-    void Render(
+    HRESULT Render(
         POINT screenPos,
         const RECT& rcBar,
         float dpiScale,
@@ -49,20 +58,32 @@ public:
     void UpdateAlbumArt(const std::vector<uint8_t>& imageBytes);
 
 private:
+    // The development regression test reads the actual GPU lyric pixels.
+    friend struct RendererTestAccess;
     HWND m_hWnd = nullptr;
     Microsoft::WRL::ComPtr<ID2D1Factory1> m_pD2DFactory;
     Microsoft::WRL::ComPtr<IDWriteFactory1> m_pDWriteFactory;
     Microsoft::WRL::ComPtr<IWICImagingFactory> m_pWICFactory;
 
-    Microsoft::WRL::ComPtr<ID2D1DCRenderTarget> m_pRenderTarget;
+    // Direct3D 11 device, Direct2D device context, and the composition swap
+    // chain that carries the finished frame to DWM.
+    Microsoft::WRL::ComPtr<ID3D11Device> m_pD3DDevice;
+    Microsoft::WRL::ComPtr<ID2D1Device> m_pD2DDevice;
+    Microsoft::WRL::ComPtr<ID2D1DeviceContext> m_pRenderTarget;
+    Microsoft::WRL::ComPtr<IDXGISwapChain1> m_pSwapChain;
+    Microsoft::WRL::ComPtr<IDCompositionDevice> m_pCompositionDevice;
+    Microsoft::WRL::ComPtr<IDCompositionTarget> m_pCompositionTarget;
+    Microsoft::WRL::ComPtr<IDCompositionVisual> m_pCompositionVisual;
 
-    // 32-bit DIB for UpdateLayeredWindow
-    HDC m_hMemDC = nullptr;
-    HBITMAP m_hDIB = nullptr;
-    HGDIOBJ m_hOldBitmap = nullptr;
-    void* m_pDIBBits = nullptr;
+    // Bar-sized layer holding the content. The HWND still spans the taskbar.
+    // It is readable so the frosted hover surfaces can sample it.
+    Microsoft::WRL::ComPtr<ID2D1Bitmap1> m_pContentBitmap;
+    Microsoft::WRL::ComPtr<ID2D1Bitmap1> m_pBackBufferBitmap;
+    Microsoft::WRL::ComPtr<ID2D1Effect> m_pBlurEffect;
+    Microsoft::WRL::ComPtr<ID2D1Layer> m_pBlurLayer;
     UINT m_width = 0;
     UINT m_height = 0;
+    POINT m_visualOffset{};
 
     bool m_isLightTheme = false;
 
@@ -108,15 +129,15 @@ private:
     D2D1_RECT_F m_rcSpectrum{};
 
     Microsoft::WRL::ComPtr<IDWriteTextLayout> m_pCurrentLyricLayout;
+    Microsoft::WRL::ComPtr<IDWriteTextLayout> m_pUpcomingLyricLayout;
     std::wstring m_currentLyricText;
-    std::wstring m_previousLyricText;
+    std::wstring m_upcomingLyricText;
     std::wstring m_lyricTrackTitle;
     int m_visibleLyricIndex = -1;
     float m_lyricScrollX = 0.0f;
+    float m_lyricScrollTargetX = 0.0f;
     float m_currentLyricWidth = 0.0f;
-    std::chrono::steady_clock::time_point m_lyricTransitionStart{};
-    std::vector<uint8_t> m_blurSource;
-    std::vector<uint8_t> m_blurHorizontal;
+    float m_upcomingLyricWidth = 0.0f;
 
     // Smooth Animation states
     float m_hoverProgress = 0.0f; // 0.0 (resting) -> 1.0 (hovered)
@@ -140,7 +161,12 @@ private:
     HRESULT CreateDeviceIndependentResources();
     HRESULT CreateTextFormats(float dpiScale);
     HRESULT CreateDeviceResources();
+    HRESULT CreatePresentResources();
+    HRESULT AcquireBackBuffer();
     void DiscardDeviceResources();
+    HRESULT Present();
+    HRESULT UpdateVisualOffset(const RECT& bar);
+    void BlurRegion(const D2D1_RECT_F& area, float strength, float radius);
 
     void DrawVectorPlay(const D2D1_RECT_F& rect);
     void DrawVectorPause(const D2D1_RECT_F& rect);
@@ -148,7 +174,6 @@ private:
     void DrawVectorNext(const D2D1_RECT_F& rect);
     void DrawVectorStereo(const D2D1_RECT_F& rect);
     void DrawNoteIcon(const D2D1_RECT_F& rect);
-    void BlurRoundedPixels(const RECT& area, float strength, float radius);
 };
 
 } // namespace MusicBar

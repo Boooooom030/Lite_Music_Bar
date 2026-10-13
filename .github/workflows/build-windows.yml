@@ -10,39 +10,115 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: windows-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
 jobs:
   build:
     runs-on: windows-2022
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      QT_FLUENT_ROOT: ${{ github.workspace }}/build-ci-sdk
+      MUSICBAR_BUILD_DIR: ${{ github.workspace }}/build-ci
+      VSLANG: '1033'
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
-      - name: Configure
-        run: cmake -S . -B build-ci -G "Visual Studio 17 2022" -A x64 -DBUILD_TESTING=ON
+      - name: Initialize MSVC x64
+        uses: ilammy/msvc-dev-cmd@v1.13.0
+        with:
+          arch: x64
 
-      - name: Build Release
-        run: cmake --build build-ci --config Release --parallel
+      - name: Identify SDK toolchain
+        id: toolchain
+        run: |
+          "version=$env:VCToolsVersion-$env:WindowsSDKVersion".TrimEnd('\') >> $env:GITHUB_OUTPUT
+
+      # Use the same revisions as the verified local SDK, not the runner's vcpkg.
+      - name: Checkout pinned vcpkg
+        uses: actions/checkout@v7
+        with:
+          repository: microsoft/vcpkg
+          ref: e456309491fd875487bf02b8a0dca76c1b1b00cc
+          path: build-ci-sdk/vcpkg
+          persist-credentials: false
+
+      - name: Checkout Fluent-Qt v1.10.0
+        uses: actions/checkout@v7
+        with:
+          repository: calvinhxx/Fluent-Qt
+          ref: 4076a1612e5785757cfe0759436dabe3414e490e
+          path: build-ci-sdk/Fluent-Qt
+          persist-credentials: false
+
+      - name: Restore static SDK cache
+        id: sdk-cache
+        uses: actions/cache/restore@v6.1.0
+        with:
+          path: |
+            build-ci-sdk/installed
+            build-ci-sdk/sdk
+            build-ci-sdk/binary-cache
+          key: qt-static-windows2022-${{ steps.toolchain.outputs.version }}-${{ hashFiles('scripts/ci/vcpkg.json', 'scripts/ci/*.cmake', 'scripts/ci/prepare-qt-sdk.ps1', '.github/workflows/build-windows.yml') }}
+
+      - name: Prepare Qt 6.11.2 and Fluent-Qt static SDK
+        run: |
+          $cached = '${{ steps.sdk-cache.outputs.cache-hit }}' -eq 'true'
+          & ./scripts/ci/prepare-qt-sdk.ps1 -SdkRoot $env:QT_FLUENT_ROOT -UseCachedSdk:$cached
+
+      # Save before building the app: a failed app test must not discard an SDK.
+      - name: Save static SDK cache
+        if: steps.sdk-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6.1.0
+        with:
+          path: |
+            build-ci-sdk/installed
+            build-ci-sdk/sdk
+            build-ci-sdk/binary-cache
+          key: ${{ steps.sdk-cache.outputs.cache-primary-key }}
+
+      - name: Build Release with the standard Ninja script
+        shell: cmd
+        run: scripts\build-qt-release.cmd
 
       - name: Test
-        run: ctest --test-dir build-ci -C Release --output-on-failure
+        run: |
+          ctest --test-dir build-ci --output-on-failure --no-tests=error
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Package the executable
-        shell: pwsh
         run: |
-          $exe = 'build-ci/Release/MusicBar.exe'
-          if (-not (Test-Path -LiteralPath $exe)) { throw "Missing $exe" }
-          New-Item -ItemType Directory -Path 'release/package/licenses' -Force | Out-Null
-          Copy-Item -LiteralPath $exe -Destination 'release/package/MusicBar.exe'
-          Copy-Item -LiteralPath 'third_party/nlohmann/LICENSE.MIT' -Destination 'release/package/licenses/nlohmann-json.MIT.txt'
-          Copy-Item -LiteralPath 'third_party/miniz/LICENSE.MIT' -Destination 'release/package/licenses/miniz.MIT.txt'
-          Compress-Archive -Path 'release/package/*' -DestinationPath 'release/MusicBar-Windows-x64.zip' -Force
+          & ./scripts/ci/package-release.ps1 -BuildDirectory $env:MUSICBAR_BUILD_DIR -SdkRoot $env:QT_FLUENT_ROOT -OutputDirectory release -SourceRevision '${{ github.sha }}'
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v7
         with:
           name: MusicBar-Windows-x64
-          path: release/MusicBar-Windows-x64.zip
+          path: |
+            release/MusicBar-Windows-x64.zip
+            release/MusicBar-Windows-x64.zip.sha256
           if-no-files-found: error
+
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: Windows-build-diagnostics
+          path: |
+            build-ci/CMakeCache.txt
+            build-ci/CMakeFiles/CMakeConfigureLog.yaml
+            build-ci/Testing/Temporary/*.log
+            build-ci/settings-verification
+            build-ci-sdk/vcpkg/buildtrees/**/*.log
+            build-ci-sdk/build-fluent/CMakeFiles/CMakeConfigureLog.yaml
+          if-no-files-found: ignore
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')
@@ -60,9 +136,10 @@ jobs:
       - name: Publish release asset
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" release/MusicBar-Windows-x64.zip --clobber
+            gh release upload "$GITHUB_REF_NAME" release/MusicBar-Windows-x64.zip release/MusicBar-Windows-x64.zip.sha256 --clobber
           else
-            gh release create "$GITHUB_REF_NAME" release/MusicBar-Windows-x64.zip --verify-tag --generate-notes
+            gh release create "$GITHUB_REF_NAME" release/MusicBar-Windows-x64.zip release/MusicBar-Windows-x64.zip.sha256 --verify-tag --generate-notes
           fi

@@ -37,10 +37,11 @@ bool TaskbarDock::Attach(HWND hAppWnd) {
         return false;
     }
 
-    // Set styles for a genuine layered taskbar child window
+    // DirectComposition supplies the pixels. Skip the GDI redirection surface;
+    // input is bounded by SetWindowRgn rather than a layered bitmap's alpha.
     LONG_PTR exStyle = GetWindowLongPtrW(m_hAppWnd, GWL_EXSTYLE);
-    exStyle |= WS_EX_LAYERED | WS_EX_TOOLWINDOW;
-    exStyle &= ~(WS_EX_TOPMOST | WS_EX_APPWINDOW);
+    exStyle |= WS_EX_NOREDIRECTIONBITMAP | WS_EX_TOOLWINDOW;
+    exStyle &= ~(WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_APPWINDOW);
     SetWindowLongPtrW(m_hAppWnd, GWL_EXSTYLE, exStyle);
 
     LONG_PTR style = GetWindowLongPtrW(m_hAppWnd, GWL_STYLE);

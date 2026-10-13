@@ -1,15 +1,21 @@
 #include "Direct2DRenderer.hpp"
 #include "ImageLoader.hpp"
 #include "LyricScroll.hpp"
-#include <d2d1helper.h>
+#include "LyricTransition.hpp"
+#include <d2d1_1helper.h>
 #include <algorithm>
 #include <cmath>
-#include <cstring>
 #include <iterator>
 
 namespace MusicBar {
 
 namespace {
+
+// CLSID_D2D1GaussianBlur from d2d1effects.h. Declared locally so the effect
+// does not depend on which library exports the symbol.
+constexpr GUID kGaussianBlurEffect = {
+    0x1feb6d69, 0x2fe6, 0x4ac9,
+    {0x8c, 0x58, 0x1d, 0x7f, 0x93, 0xe7, 0xa6, 0xa5}};
 
 bool DetectSystemLightTheme() {
     DWORD value = 0;
@@ -119,15 +125,17 @@ HRESULT Direct2DRenderer::CreateTextFormats(float dpiScale) {
     m_pLyricFormat = std::move(lyric);
     m_textDpiScale = dpiScale;
     m_pCurrentLyricLayout.Reset();
+    m_pUpcomingLyricLayout.Reset();
     m_currentLyricWidth = 0.0f;
     m_lyricScrollX = 0.0f;
+    m_lyricScrollTargetX = 0.0f;
     return S_OK;
 }
 
-void Direct2DRenderer::UpdateTheme() {
+HRESULT Direct2DRenderer::UpdateTheme() {
     m_isLightTheme = DetectSystemLightTheme();
 
-    if (!m_pRenderTarget) return;
+    if (!m_pRenderTarget) return S_OK;
 
     m_baseTextPrimaryAlpha = 0.95f;
     m_baseTextSecondaryAlpha = m_isLightTheme ? 0.88f : 0.85f;
@@ -184,13 +192,21 @@ void Direct2DRenderer::UpdateTheme() {
         ? D2D1::ColorF(1.0f, 1.0f, 1.0f, m_baseHighlightAlpha)
         : D2D1::ColorF(1.0f, 1.0f, 1.0f, m_baseHighlightAlpha);
 
-    m_pRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.005f), &pHitTestBrush);
-    m_pRenderTarget->CreateSolidColorBrush(colorTextPrimary, &m_pTextPrimaryBrush);
-    m_pRenderTarget->CreateSolidColorBrush(colorTextSecondary, &m_pTextSecondaryBrush);
-    m_pRenderTarget->CreateSolidColorBrush(colorLyric, &m_pLyricHighlightBrush);
-    m_pRenderTarget->CreateSolidColorBrush(colorProgressBg, &m_pProgressBgBrush);
-    m_pRenderTarget->CreateSolidColorBrush(colorProgressFg, &m_pProgressFgBrush);
-    m_pRenderTarget->CreateSolidColorBrush(colorSpectrum, &m_pSpectrumBrush);
+    HRESULT brushHr = S_OK;
+    auto createBrush = [this, &brushHr](const D2D1_COLOR_F& color,
+        Microsoft::WRL::ComPtr<ID2D1SolidColorBrush>& brush) {
+        if (SUCCEEDED(brushHr)) {
+            brushHr = m_pRenderTarget->CreateSolidColorBrush(color,
+                brush.ReleaseAndGetAddressOf());
+        }
+    };
+    createBrush(D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.005f), pHitTestBrush);
+    createBrush(colorTextPrimary, m_pTextPrimaryBrush);
+    createBrush(colorTextSecondary, m_pTextSecondaryBrush);
+    createBrush(colorLyric, m_pLyricHighlightBrush);
+    createBrush(colorProgressBg, m_pProgressBgBrush);
+    createBrush(colorProgressFg, m_pProgressFgBrush);
+    createBrush(colorSpectrum, m_pSpectrumBrush);
     m_pSpectrumGradientBrush.Reset();
     const D2D1_GRADIENT_STOP spectrumStops[] = {
         {0.0f, m_isLightTheme
@@ -209,33 +225,82 @@ void Direct2DRenderer::UpdateTheme() {
         m_pRenderTarget->CreateLinearGradientBrush(
             D2D1::LinearGradientBrushProperties(
                 D2D1::Point2F(0.0f, 0.0f), D2D1::Point2F(0.0f, 48.0f)),
-            gradientStops.Get(), &m_pSpectrumGradientBrush);
+            gradientStops.Get(), m_pSpectrumGradientBrush.ReleaseAndGetAddressOf());
     }
-    m_pRenderTarget->CreateSolidColorBrush(colorBtnHover, &m_pBtnHoverBrush);
-    m_pRenderTarget->CreateSolidColorBrush(colorIcon, &m_pBtnIconBrush);
-    m_pRenderTarget->CreateSolidColorBrush(colorCoverPlaceholder, &m_pCoverPlaceholderBrush);
-    m_pRenderTarget->CreateSolidColorBrush(colorFrostedBg, &m_pFrostedBgBrush);
-    m_pRenderTarget->CreateSolidColorBrush(colorFrostedBorder, &m_pFrostedBorderBrush);
-    m_pRenderTarget->CreateSolidColorBrush(colorFrostedHighlight, &m_pFrostedHighlightBrush);
+    createBrush(colorBtnHover, m_pBtnHoverBrush);
+    createBrush(colorIcon, m_pBtnIconBrush);
+    createBrush(colorCoverPlaceholder, m_pCoverPlaceholderBrush);
+    createBrush(colorFrostedBg, m_pFrostedBgBrush);
+    createBrush(colorFrostedBorder, m_pFrostedBorderBrush);
+    createBrush(colorFrostedHighlight, m_pFrostedHighlightBrush);
+    if (FAILED(brushHr)) DiscardDeviceResources();
+    return brushHr;
 }
 
 HRESULT Direct2DRenderer::CreateDeviceResources() {
     if (m_pRenderTarget) return S_OK;
 
-    D2D1_RENDER_TARGET_PROPERTIES rtProps = D2D1::RenderTargetProperties(
-        D2D1_RENDER_TARGET_TYPE_DEFAULT,
-        D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM,
-            D2D1_ALPHA_MODE_PREMULTIPLIED),
-        96.0f, 96.0f
-    );
-
-    HRESULT hr = m_pD2DFactory->CreateDCRenderTarget(
-        &rtProps,
-        &m_pRenderTarget
-    );
+    // All device calls stay on the UI thread, so D3D needs no API-level locks.
+    const UINT flags = D3D11_CREATE_DEVICE_BGRA_SUPPORT |
+        D3D11_CREATE_DEVICE_SINGLETHREADED;
+    const D3D_FEATURE_LEVEL levels[] = {
+        D3D_FEATURE_LEVEL_11_1,
+        D3D_FEATURE_LEVEL_11_0,
+        D3D_FEATURE_LEVEL_10_1,
+        D3D_FEATURE_LEVEL_10_0,
+    };
+    Microsoft::WRL::ComPtr<ID3D11Device> device;
+    HRESULT hr = D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr,
+        flags, levels, _countof(levels), D3D11_SDK_VERSION,
+        device.GetAddressOf(), nullptr, nullptr);
+    if (FAILED(hr)) {
+        // Machines without a usable GPU driver fall back to the software
+        // rasterizer instead of losing the bar.
+        hr = D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, flags,
+            levels, _countof(levels), D3D11_SDK_VERSION,
+            device.ReleaseAndGetAddressOf(), nullptr, nullptr);
+    }
     if (FAILED(hr)) return hr;
 
-    UpdateTheme();
+    Microsoft::WRL::ComPtr<IDXGIDevice> dxgiDevice;
+    hr = device.As(&dxgiDevice);
+    if (FAILED(hr)) return hr;
+
+    hr = m_pD2DFactory->CreateDevice(dxgiDevice.Get(), &m_pD2DDevice);
+    if (FAILED(hr)) return hr;
+
+    hr = m_pD2DDevice->CreateDeviceContext(
+        D2D1_DEVICE_CONTEXT_OPTIONS_NONE, &m_pRenderTarget);
+    if (FAILED(hr)) {
+        DiscardDeviceResources();
+        return hr;
+    }
+
+    // The bar is laid out in physical pixels and scales its own font sizes, so
+    // the context stays at 96 DPI and treats coordinates as pixels.
+    m_pRenderTarget->SetDpi(96.0f, 96.0f);
+    m_pRenderTarget->SetUnitMode(D2D1_UNIT_MODE_PIXELS);
+
+    hr = m_pRenderTarget->CreateEffect(kGaussianBlurEffect,
+        m_pBlurEffect.GetAddressOf());
+    if (SUCCEEDED(hr)) {
+        hr = m_pBlurEffect->SetValue(D2D1_GAUSSIANBLUR_PROP_OPTIMIZATION,
+            D2D1_GAUSSIANBLUR_OPTIMIZATION_BALANCED);
+    }
+    if (FAILED(hr)) {
+        DiscardDeviceResources();
+        return hr;
+    }
+
+    m_pD3DDevice = device;
+    hr = CreatePresentResources();
+    if (FAILED(hr)) {
+        DiscardDeviceResources();
+        return hr;
+    }
+
+    hr = UpdateTheme();
+    if (FAILED(hr)) return hr;
 
     // A recreated render target needs new device-bound bitmaps.
     if (!m_cachedImageBytes.empty()) {
@@ -245,7 +310,127 @@ HRESULT Direct2DRenderer::CreateDeviceResources() {
     return S_OK;
 }
 
+// Creates the composition swap chain and the DirectComposition visual tree that
+// carries it to DWM. Called once per device, and again after a size change.
+HRESULT Direct2DRenderer::CreatePresentResources() {
+    if (!m_pD3DDevice || !m_hWnd) return E_FAIL;
+
+    Microsoft::WRL::ComPtr<IDXGIDevice> dxgiDevice;
+    HRESULT hr = m_pD3DDevice.As(&dxgiDevice);
+    if (FAILED(hr)) return hr;
+
+    Microsoft::WRL::ComPtr<IDXGIAdapter> adapter;
+    hr = dxgiDevice->GetAdapter(adapter.GetAddressOf());
+    if (FAILED(hr)) return hr;
+
+    Microsoft::WRL::ComPtr<IDXGIFactory2> factory;
+    hr = adapter->GetParent(IID_PPV_ARGS(factory.GetAddressOf()));
+    if (FAILED(hr)) return hr;
+
+    const UINT width = std::max(1U, m_width);
+    const UINT height = std::max(1U, m_height);
+
+    if (!m_pSwapChain) {
+        DXGI_SWAP_CHAIN_DESC1 description{};
+        description.Width = width;
+        description.Height = height;
+        description.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+        description.Stereo = FALSE;
+        description.SampleDesc.Count = 1;
+        description.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+        description.BufferCount = 2;
+        description.Scaling = DXGI_SCALING_STRETCH;
+        description.SwapEffect = DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL;
+        description.AlphaMode = DXGI_ALPHA_MODE_PREMULTIPLIED;
+        description.Flags = 0;
+
+        hr = factory->CreateSwapChainForComposition(m_pD3DDevice.Get(),
+            &description, nullptr, m_pSwapChain.GetAddressOf());
+        if (FAILED(hr)) return hr;
+
+        hr = DCompositionCreateDevice(dxgiDevice.Get(),
+            IID_PPV_ARGS(m_pCompositionDevice.GetAddressOf()));
+        if (FAILED(hr)) return hr;
+
+        hr = m_pCompositionDevice->CreateTargetForHwnd(m_hWnd, TRUE,
+            m_pCompositionTarget.GetAddressOf());
+        if (FAILED(hr)) return hr;
+
+        hr = m_pCompositionDevice->CreateVisual(m_pCompositionVisual.GetAddressOf());
+        if (FAILED(hr)) return hr;
+
+        hr = m_pCompositionVisual->SetContent(m_pSwapChain.Get());
+        if (FAILED(hr)) return hr;
+
+        hr = m_pCompositionTarget->SetRoot(m_pCompositionVisual.Get());
+        if (FAILED(hr)) return hr;
+
+        hr = m_pCompositionDevice->Commit();
+        if (FAILED(hr)) return hr;
+    } else {
+        // Release every reference to the old targets before resizing buffers.
+        m_pRenderTarget->SetTarget(nullptr);
+        if (m_pBlurEffect) m_pBlurEffect->SetInput(0, nullptr);
+        m_pContentBitmap.Reset();
+        m_pBackBufferBitmap.Reset();
+        hr = m_pSwapChain->ResizeBuffers(0, width, height, DXGI_FORMAT_UNKNOWN, 0);
+        if (FAILED(hr)) return hr;
+    }
+
+    m_pContentBitmap.Reset();
+    D2D1_BITMAP_PROPERTIES1 properties = D2D1::BitmapProperties1(
+        D2D1_BITMAP_OPTIONS_TARGET,
+        D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM,
+            D2D1_ALPHA_MODE_PREMULTIPLIED),
+        96.0f, 96.0f);
+    return m_pRenderTarget->CreateBitmap(D2D1::SizeU(width, height), nullptr, 0,
+        properties, m_pContentBitmap.GetAddressOf());
+}
+
+// Binds the current swap chain buffer as the Direct2D target. The wrapper is
+// created per frame and unbound before Present rotates the flip-model buffers.
+HRESULT Direct2DRenderer::AcquireBackBuffer() {
+    if (!m_pSwapChain || !m_pRenderTarget) return E_FAIL;
+
+    m_pBackBufferBitmap.Reset();
+
+    Microsoft::WRL::ComPtr<IDXGISurface> surface;
+    HRESULT hr = m_pSwapChain->GetBuffer(0, IID_PPV_ARGS(surface.GetAddressOf()));
+    if (FAILED(hr)) return hr;
+
+    D2D1_BITMAP_PROPERTIES1 properties = D2D1::BitmapProperties1(
+        D2D1_BITMAP_OPTIONS_TARGET | D2D1_BITMAP_OPTIONS_CANNOT_DRAW,
+        D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM,
+            D2D1_ALPHA_MODE_PREMULTIPLIED),
+        96.0f, 96.0f);
+    hr = m_pRenderTarget->CreateBitmapFromDxgiSurface(surface.Get(),
+        &properties, m_pBackBufferBitmap.GetAddressOf());
+    if (FAILED(hr)) return hr;
+
+    m_pRenderTarget->SetTarget(m_pBackBufferBitmap.Get());
+    return S_OK;
+}
+
+HRESULT Direct2DRenderer::Present() {
+    if (!m_pSwapChain) return E_UNEXPECTED;
+    // DWM schedules presentation at refresh boundaries. This call can also
+    // wait for room in the presentation queue; it is not a frame clock.
+    return m_pSwapChain->Present(1, 0);
+}
+
+HRESULT Direct2DRenderer::UpdateVisualOffset(const RECT& bar) {
+    if (m_visualOffset.x == bar.left && m_visualOffset.y == bar.top) return S_OK;
+    HRESULT hr = m_pCompositionVisual->SetOffsetX(static_cast<float>(bar.left));
+    if (SUCCEEDED(hr)) {
+        hr = m_pCompositionVisual->SetOffsetY(static_cast<float>(bar.top));
+    }
+    if (SUCCEEDED(hr)) hr = m_pCompositionDevice->Commit();
+    if (SUCCEEDED(hr)) m_visualOffset = POINT{bar.left, bar.top};
+    return hr;
+}
+
 void Direct2DRenderer::DiscardDeviceResources() {
+    if (m_pRenderTarget) m_pRenderTarget->SetTarget(nullptr);
     m_pAlbumArtBitmap.Reset();
     m_albumArtCache.clear();
     pHitTestBrush.Reset();
@@ -262,62 +447,35 @@ void Direct2DRenderer::DiscardDeviceResources() {
     m_pFrostedBgBrush.Reset();
     m_pFrostedBorderBrush.Reset();
     m_pFrostedHighlightBrush.Reset();
+    m_pBlurLayer.Reset();
+    m_pBlurEffect.Reset();
+    m_pContentBitmap.Reset();
+    m_pBackBufferBitmap.Reset();
+    m_pCompositionVisual.Reset();
+    m_pCompositionTarget.Reset();
+    m_pCompositionDevice.Reset();
+    m_pSwapChain.Reset();
     m_pRenderTarget.Reset();
-
-    if (m_hMemDC && m_hOldBitmap) {
-        SelectObject(m_hMemDC, m_hOldBitmap);
-        m_hOldBitmap = nullptr;
-    }
-    if (m_hDIB) {
-        DeleteObject(m_hDIB);
-        m_hDIB = nullptr;
-    }
-    if (m_hMemDC) {
-        DeleteDC(m_hMemDC);
-        m_hMemDC = nullptr;
-    }
-    m_pDIBBits = nullptr;
+    m_pD2DDevice.Reset();
+    m_pD3DDevice.Reset();
     m_width = 0;
     m_height = 0;
+    m_visualOffset = {};
 }
 
-void Direct2DRenderer::Resize(UINT width, UINT height) {
-    UINT w = std::max(1U, width);
-    UINT h = std::max(1U, height);
-    if (w == m_width && h == m_height && m_hDIB != nullptr) {
-        return;
+HRESULT Direct2DRenderer::Resize(UINT width, UINT height) {
+    const UINT w = std::max(1U, width);
+    const UINT h = std::max(1U, height);
+    if (w == m_width && h == m_height && m_pContentBitmap && m_pSwapChain) {
+        return S_OK;
     }
-
-    if (m_hMemDC && m_hOldBitmap) {
-        SelectObject(m_hMemDC, m_hOldBitmap);
-        m_hOldBitmap = nullptr;
-    }
-    if (m_hDIB) {
-        DeleteObject(m_hDIB);
-        m_hDIB = nullptr;
-    }
-    if (m_hMemDC) {
-        DeleteDC(m_hMemDC);
-        m_hMemDC = nullptr;
-    }
-
     m_width = w;
     m_height = h;
-
-    HDC hdcScreen = GetDC(nullptr);
-    m_hMemDC = CreateCompatibleDC(hdcScreen);
-
-    BITMAPINFO bmi{};
-    bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
-    bmi.bmiHeader.biWidth = static_cast<LONG>(m_width);
-    bmi.bmiHeader.biHeight = -static_cast<LONG>(m_height); // Top-down
-    bmi.bmiHeader.biPlanes = 1;
-    bmi.bmiHeader.biBitCount = 32;
-    bmi.bmiHeader.biCompression = BI_RGB;
-
-    m_hDIB = CreateDIBSection(m_hMemDC, &bmi, DIB_RGB_COLORS, &m_pDIBBits, nullptr, 0);
-    if (m_hDIB) m_hOldBitmap = SelectObject(m_hMemDC, m_hDIB);
-    ReleaseDC(nullptr, hdcScreen);
+    const HRESULT hr = CreatePresentResources();
+    if (FAILED(hr)) {
+        DiscardDeviceResources();
+    }
+    return hr;
 }
 
 void Direct2DRenderer::UpdateAlbumArt(const std::vector<uint8_t>& imageBytes) {
@@ -409,9 +567,9 @@ void Direct2DRenderer::TriggerSpectrumClick() {
 bool Direct2DRenderer::HasPendingAnimation() const {
     const bool hoverIsMoving = m_hoverProgress > 0.001f &&
         m_hoverProgress < 0.999f;
-    const bool lyricIsMoving = m_lyricTransitionStart.time_since_epoch().count() != 0 &&
-        std::chrono::steady_clock::now() - m_lyricTransitionStart <
-            std::chrono::milliseconds(400);
+    const float hover = std::clamp(m_hoverProgress, 0.0f, 1.0f);
+    const bool lyricIsMoving = 1.0f - hover * hover * (3.0f - 2.0f * hover) > 0.01f &&
+        std::abs(m_lyricScrollTargetX - m_lyricScrollX) > 0.2f;
     const bool coverIsMoving = m_coverHoverProgress > 0.001f &&
         m_coverHoverProgress < 0.999f;
     const bool spectrumClickIsMoving =
@@ -420,72 +578,50 @@ bool Direct2DRenderer::HasPendingAnimation() const {
             std::chrono::milliseconds(280);
     const bool spectrumPeakIsMoving = std::any_of(m_spectrumPeaks.begin(),
         m_spectrumPeaks.end(), [](float peak) { return peak > 0.04f; });
-    return hoverIsMoving || coverIsMoving || lyricIsMoving ||
-        spectrumClickIsMoving || spectrumPeakIsMoving;
+    const bool buttonIsMoving = std::any_of(std::begin(m_btnHoverAlpha),
+        std::end(m_btnHoverAlpha), [](float alpha) {
+            return alpha > 0.001f && alpha < 0.999f;
+        });
+    return !m_pRenderTarget || !m_pSwapChain || !m_pContentBitmap ||
+        hoverIsMoving || coverIsMoving || lyricIsMoving ||
+        spectrumClickIsMoving || spectrumPeakIsMoving || buttonIsMoving;
 }
 
-void Direct2DRenderer::BlurRoundedPixels(const RECT& area, float strength, float radius) {
-    if (!m_pDIBBits || strength <= 0.0f) return;
-    const int left = std::clamp<LONG>(area.left, 0, m_width);
-    const int top = std::clamp<LONG>(area.top, 0, m_height);
-    const int right = std::clamp<LONG>(area.right, 0, m_width);
-    const int bottom = std::clamp<LONG>(area.bottom, 0, m_height);
-    const int width = right - left;
-    const int height = bottom - top;
-    if (width <= 0 || height <= 0) return;
-    radius = std::clamp(radius, 0.0f, std::min(width, height) * 0.5f);
+// Blurs a hover surface on the GPU. The bar content was drawn into
+// m_pContentBitmap, which is readable as a bitmap, so the effect can sample it;
+// the result is composited inside the same rounded bounds the hover surface
+// uses, and the layer opacity mixes it with the sharp content underneath.
+void Direct2DRenderer::BlurRegion(const D2D1_RECT_F& area, float strength, float radius) {
+    if (!m_pBlurEffect || !m_pContentBitmap || !m_pRenderTarget) return;
+    if (strength <= 0.002f) return;
+    const float width = area.right - area.left;
+    const float height = area.bottom - area.top;
+    if (width < 2.0f || height < 2.0f) return;
 
-    const size_t bytes = static_cast<size_t>(width) * height * 4;
-    m_blurSource.resize(bytes);
-    m_blurHorizontal.resize(bytes);
-    auto* canvas = static_cast<uint8_t*>(m_pDIBBits);
-    for (int y = 0; y < height; ++y) {
-        std::memcpy(m_blurSource.data() + static_cast<size_t>(y) * width * 4,
-            canvas + (static_cast<size_t>(top + y) * m_width + left) * 4,
-            static_cast<size_t>(width) * 4);
+    if (!m_pBlurLayer &&
+        FAILED(m_pRenderTarget->CreateLayer(nullptr, m_pBlurLayer.GetAddressOf()))) {
+        return;
     }
-    constexpr int weights[7] = {1, 6, 15, 20, 15, 6, 1};
-    for (int y = 0; y < height; ++y) {
-        for (int x = 0; x < width; ++x) {
-            for (int channel = 0; channel < 4; ++channel) {
-                int total = 0;
-                for (int tap = -3; tap <= 3; ++tap) {
-                    const int sampleX = std::clamp(x + tap, 0, width - 1);
-                    total += weights[tap + 3] * m_blurSource[
-                        (static_cast<size_t>(y) * width + sampleX) * 4 + channel];
-                }
-                m_blurHorizontal[(static_cast<size_t>(y) * width + x) * 4 + channel] =
-                    static_cast<uint8_t>((total + 32) / 64);
-            }
-        }
+
+    const float corner = std::clamp(radius, 1.0f, std::min(width, height) * 0.5f);
+    Microsoft::WRL::ComPtr<ID2D1RoundedRectangleGeometry> mask;
+    if (FAILED(m_pD2DFactory->CreateRoundedRectangleGeometry(
+        D2D1::RoundedRect(area, corner, corner), mask.GetAddressOf()))) {
+        return;
     }
-    for (int y = 0; y < height; ++y) {
-        for (int x = 0; x < width; ++x) {
-            const float cornerX = std::clamp(x + 0.5f, radius, width - radius);
-            const float cornerY = std::clamp(y + 0.5f, radius, height - radius);
-            const float dx = x + 0.5f - cornerX;
-            const float dy = y + 0.5f - cornerY;
-            const float coverage = std::clamp(radius + 0.5f -
-                std::sqrt(dx * dx + dy * dy), 0.0f, 1.0f);
-            if (coverage <= 0.0f) continue;
-            auto* output = canvas +
-                (static_cast<size_t>(top + y) * m_width + left + x) * 4;
-            for (int channel = 0; channel < 4; ++channel) {
-                int total = 0;
-                for (int tap = -3; tap <= 3; ++tap) {
-                    const int sampleY = std::clamp(y + tap, 0, height - 1);
-                    total += weights[tap + 3] * m_blurHorizontal[
-                        (static_cast<size_t>(sampleY) * width + x) * 4 + channel];
-                }
-                const auto original = m_blurSource[
-                    (static_cast<size_t>(y) * width + x) * 4 + channel];
-                output[channel] = static_cast<uint8_t>(std::clamp(
-                    original * (1.0f - strength * coverage) +
-                        (total / 64.0f) * strength * coverage,
-                    0.0f, 255.0f));
-            }
-        }
-    }
+
+    const float deviation = std::max(0.5f, radius / 3.0f);
+    m_pBlurEffect->SetValue(D2D1_GAUSSIANBLUR_PROP_STANDARD_DEVIATION, deviation);
+    m_pBlurEffect->SetInput(0, m_pContentBitmap.Get());
+
+    const D2D1_LAYER_PARAMETERS layer = D2D1::LayerParameters(
+        D2D1::InfiniteRect(), mask.Get(), D2D1_ANTIALIAS_MODE_PER_PRIMITIVE,
+        D2D1::IdentityMatrix(), strength);
+    m_pRenderTarget->PushLayer(layer, m_pBlurLayer.Get());
+    m_pRenderTarget->DrawImage(m_pBlurEffect.Get(),
+        D2D1::Point2F(area.left, area.top), area,
+        D2D1_INTERPOLATION_MODE_LINEAR, D2D1_COMPOSITE_MODE_SOURCE_OVER);
+    m_pRenderTarget->PopLayer();
 }
 
 void Direct2DRenderer::DrawVectorPlay(const D2D1_RECT_F& rect) {
@@ -623,7 +759,7 @@ void Direct2DRenderer::DrawNoteIcon(const D2D1_RECT_F& rect) {
     );
 }
 
-void Direct2DRenderer::Render(
+HRESULT Direct2DRenderer::Render(
     POINT screenPos,
     const RECT& rcBar,
     float dpiScale,
@@ -636,21 +772,22 @@ void Direct2DRenderer::Render(
     bool isCoverHovered
 ) {
     (void)screenPos;
-    if (FAILED(CreateDeviceResources())) return;
-    if (std::abs(dpiScale - m_textDpiScale) > 0.001f &&
-        FAILED(CreateTextFormats(dpiScale))) return;
-
-    RECT canvas{};
-    GetClientRect(m_hWnd, &canvas);
-    Resize(static_cast<UINT>(canvas.right), static_cast<UINT>(canvas.bottom));
-    if (!m_hMemDC || !m_hDIB) return;
-
-    RECT rcClient{ 0, 0, static_cast<LONG>(m_width), static_cast<LONG>(m_height) };
-    if (FAILED(m_pRenderTarget->BindDC(m_hMemDC, &rcClient))) {
-        return;
+    HRESULT resourceHr = CreateDeviceResources();
+    if (FAILED(resourceHr)) return resourceHr;
+    if (std::abs(dpiScale - m_textDpiScale) > 0.001f) {
+        resourceHr = CreateTextFormats(dpiScale);
+        if (FAILED(resourceHr)) return resourceHr;
     }
 
-    m_pRenderTarget->BeginDraw();
+    if (rcBar.right <= rcBar.left || rcBar.bottom <= rcBar.top) return E_INVALIDARG;
+    resourceHr = Resize(static_cast<UINT>(rcBar.right - rcBar.left),
+        static_cast<UINT>(rcBar.bottom - rcBar.top));
+    if (FAILED(resourceHr)) return resourceHr;
+    resourceHr = UpdateVisualOffset(rcBar);
+    if (FAILED(resourceHr)) {
+        DiscardDeviceResources();
+        return resourceHr;
+    }
 
     // 0. Smooth Animation Engine (Gentle 380ms hover transition + 180ms button glow)
     auto now = std::chrono::steady_clock::now();
@@ -696,16 +833,29 @@ void Direct2DRenderer::Render(
     updateBtnHover(2, ButtonType::Next, isMiddleHovered);
     updateBtnHover(3, ButtonType::PlayPause, isCoverHovered);
 
-    // Clear the taskbar-sized canvas, then draw only inside the docked bar region.
+    // Ordinary frames draw straight into the swap chain. Only hovering needs
+    // an intermediate bitmap that the blur effect can sample.
+    const bool needsBlur = eased > 0.002f || coverEased > 0.002f;
+    if (needsBlur) {
+        m_pRenderTarget->SetTarget(m_pContentBitmap.Get());
+    } else {
+        resourceHr = AcquireBackBuffer();
+        if (FAILED(resourceHr)) {
+            DiscardDeviceResources();
+            return resourceHr;
+        }
+    }
+    m_pRenderTarget->BeginDraw();
+
+    // Draw in bar-local pixels. DirectComposition positions the surface within
+    // the taskbar-sized HWND without allocating a taskbar-sized texture.
     m_pRenderTarget->SetTransform(D2D1::Matrix3x2F::Identity());
     m_pRenderTarget->Clear(D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.0f));
-    m_pRenderTarget->SetTransform(D2D1::Matrix3x2F::Translation(
-        static_cast<float>(rcBar.left), static_cast<float>(rcBar.top)));
 
     const float barWidth = static_cast<float>(rcBar.right - rcBar.left);
     const float barHeight = static_cast<float>(rcBar.bottom - rcBar.top);
 
-    // Invisible hit-test area (alpha=1/255) ensures entire bar area handles drag/right-click
+    // Preserve the subtle base tint; hit testing uses the HWND region.
     m_pRenderTarget->FillRectangle(
         D2D1::RectF(0.0f, 0.0f, barWidth, barHeight),
         pHitTestBrush.Get()
@@ -842,33 +992,38 @@ void Direct2DRenderer::Render(
         m_pLyricHighlightBrush->SetOpacity(m_baseLyricAlpha * textAlpha);
 
         if (middleWidth > 30.0f * dpiScale) {
-            const int nextLyricIndex = !track.title.empty() && showLyrics &&
-                lyrics.activeIndex >= 0 &&
-                lyrics.activeIndex < static_cast<int>(lyrics.lines.size())
-                ? lyrics.activeIndex : -1;
-            const std::wstring nextLyricText = nextLyricIndex >= 0
+            const bool instrumentalNotice = !track.title.empty() && showLyrics && lyrics.isInstrumental;
+            const int nextLyricIndex = !track.title.empty() && showLyrics
+                ? LyricDisplayIndex(lyrics) : -1;
+            const std::wstring nextLyricText = instrumentalNotice ? L"纯音乐，请欣赏" : nextLyricIndex >= 0
                 ? lyrics.lines[nextLyricIndex].text : std::wstring{};
             if (track.title != m_lyricTrackTitle) {
                 m_lyricTrackTitle = track.title;
-                m_previousLyricText.clear();
                 m_currentLyricText = nextLyricText;
                 m_visibleLyricIndex = nextLyricIndex;
-                m_lyricTransitionStart = now - std::chrono::milliseconds(400);
                 m_lyricScrollX = 0.0f;
+                m_lyricScrollTargetX = 0.0f;
                 m_pCurrentLyricLayout.Reset();
+                m_pUpcomingLyricLayout.Reset();
+                m_upcomingLyricText.clear();
             } else if (nextLyricIndex != m_visibleLyricIndex ||
                 nextLyricText != m_currentLyricText) {
-                m_previousLyricText = m_currentLyricText;
                 m_currentLyricText = nextLyricText;
                 m_visibleLyricIndex = nextLyricIndex;
-                m_lyricTransitionStart = now;
                 m_lyricScrollX = 0.0f;
-                m_pCurrentLyricLayout.Reset();
+                m_lyricScrollTargetX = 0.0f;
+                if (nextLyricText == m_upcomingLyricText && m_pUpcomingLyricLayout) {
+                    m_pCurrentLyricLayout = std::move(m_pUpcomingLyricLayout);
+                    m_currentLyricWidth = m_upcomingLyricWidth;
+                } else {
+                    m_pCurrentLyricLayout.Reset();
+                }
             }
-            const float slideTime = std::clamp(
-                std::chrono::duration<float>(now - m_lyricTransitionStart).count() / 0.40f,
-                0.0f, 1.0f);
-            const float slide = slideTime * slideTime * (3.0f - 2.0f * slideTime);
+            const int64_t positionMs = track.GetCurrentInterpolatedPositionMs();
+            const auto transition = nextLyricIndex >= 0
+                ? ResolveLyricTransition(lyrics, positionMs) : LyricTransition{};
+            const float slide = transition.progress * transition.progress *
+                (3.0f - 2.0f * transition.progress);
             float lineH = (fBarHeight - 8.0f * dpiScale) * 0.5f;
             D2D1_RECT_F titleRect = D2D1::RectF(
                 middleLeft, 3.0f * dpiScale,
@@ -892,11 +1047,11 @@ void Direct2DRenderer::Render(
                     titleRect, m_pTextPrimaryBrush.Get());
             }
 
-            if (!m_currentLyricText.empty() && !m_pCurrentLyricLayout) {
+            auto createLayout = [&](const std::wstring& text,
+                Microsoft::WRL::ComPtr<IDWriteTextLayout>& target, float& width) {
                 Microsoft::WRL::ComPtr<IDWriteTextLayout> layout;
                 if (SUCCEEDED(m_pDWriteFactory->CreateTextLayout(
-                    m_currentLyricText.c_str(),
-                    static_cast<UINT32>(m_currentLyricText.size()),
+                    text.c_str(), static_cast<UINT32>(text.size()),
                     m_pLyricFormat.Get(), 4096.0f * dpiScale, lineH, &layout))) {
                     layout->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_LEADING);
                     layout->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP);
@@ -904,36 +1059,44 @@ void Direct2DRenderer::Render(
                     layout->SetTrimming(&noTrimming, nullptr);
                     DWRITE_TEXT_METRICS metrics{};
                     if (SUCCEEDED(layout->GetMetrics(&metrics))) {
-                        m_currentLyricWidth = std::max(1.0f,
+                        width = std::max(1.0f,
                             metrics.widthIncludingTrailingWhitespace);
-                        layout->SetMaxWidth(m_currentLyricWidth + 1.0f);
-                        m_pCurrentLyricLayout = std::move(layout);
+                        layout->SetMaxWidth(width + 1.0f);
+                        target = std::move(layout);
                     }
                 }
+            };
+            if (!m_currentLyricText.empty() && !m_pCurrentLyricLayout)
+                createLayout(m_currentLyricText, m_pCurrentLyricLayout, m_currentLyricWidth);
+            if (transition.nextIndex >= 0) {
+                const auto& upcoming = lyrics.lines[transition.nextIndex].text;
+                if (m_upcomingLyricText != upcoming) {
+                    m_upcomingLyricText = upcoming;
+                    m_pUpcomingLyricLayout.Reset();
+                }
+                if (!m_pUpcomingLyricLayout)
+                    createLayout(upcoming, m_pUpcomingLyricLayout, m_upcomingLyricWidth);
+            } else {
+                m_pUpcomingLyricLayout.Reset();
+                m_upcomingLyricText.clear();
             }
 
             m_pRenderTarget->PushAxisAlignedClip(detailRect,
                 D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
-            if (!m_previousLyricText.empty() && slide < 1.0f) {
-                const float oldOffset = slide * lineH;
-                D2D1_RECT_F oldRect = D2D1::RectF(detailRect.left,
-                    detailRect.top - oldOffset, detailRect.right,
-                    detailRect.bottom - oldOffset);
-                m_pTextSecondaryBrush->SetOpacity(m_baseTextSecondaryAlpha *
-                    textAlpha * (1.0f - slide));
-                m_pRenderTarget->DrawText(m_previousLyricText.c_str(),
-                    static_cast<UINT32>(m_previousLyricText.size()),
-                    m_pLyricFormat.Get(), oldRect, m_pTextSecondaryBrush.Get());
-            }
-
-            if (m_pCurrentLyricLayout && nextLyricIndex >= 0) {
+            if (m_pCurrentLyricLayout && instrumentalNotice) {
+                const float drawX = middleLeft + std::max(0.0f, (middleWidth - m_currentLyricWidth) * 0.5f);
+                m_pTextSecondaryBrush->SetOpacity(m_baseTextSecondaryAlpha * textAlpha);
+                m_pRenderTarget->DrawTextLayout(D2D1::Point2F(drawX, detailRect.top),
+                    m_pCurrentLyricLayout.Get(), m_pTextSecondaryBrush.Get());
+            } else if (m_pCurrentLyricLayout && nextLyricIndex >= 0) {
                 const auto& line = lyrics.lines[nextLyricIndex];
-                const int64_t positionMs = track.GetCurrentInterpolatedPositionMs();
                 const float lineProgress = line.durationMs > 0
                     ? std::clamp(static_cast<float>(positionMs - line.startMs) /
                         static_cast<float>(line.durationMs), 0.0f, 1.0f)
                     : std::clamp(lyrics.syllableProgress, 0.0f, 1.0f);
-                float highlightX = m_currentLyricWidth;
+                // Standard LRC has line timing, so fill from left to right
+                // over that interval instead of painting the whole line blue.
+                float highlightX = m_currentLyricWidth * lineProgress;
                 float focusX = m_currentLyricWidth * lineProgress;
                 if (line.HasKaraoke()) {
                     highlightX = 0.0f;
@@ -965,15 +1128,16 @@ void Direct2DRenderer::Render(
                     m_currentLyricWidth - middleWidth);
                 const float targetScroll = LyricScrollTarget(
                     m_currentLyricWidth, middleWidth, focusX, lineProgress);
+                m_lyricScrollTargetX = targetScroll;
                 m_lyricScrollX += (targetScroll - m_lyricScrollX) *
                     std::clamp(dt / 0.12f, 0.0f, 1.0f);
                 const float drawX = maxScroll > 0.0f
                     ? middleLeft - m_lyricScrollX
                     : middleLeft + (middleWidth - m_currentLyricWidth) * 0.5f;
-                const float drawY = detailRect.top + (1.0f - slide) * lineH;
+                const float drawY = detailRect.top - slide * lineH;
                 const D2D1_POINT_2F origin = D2D1::Point2F(drawX, drawY);
                 m_pTextSecondaryBrush->SetOpacity(m_baseTextSecondaryAlpha *
-                    textAlpha * slide);
+                    textAlpha * (1.0f - slide));
                 m_pRenderTarget->DrawTextLayout(origin, m_pCurrentLyricLayout.Get(),
                     m_pTextSecondaryBrush.Get());
                 const float filledRight = std::min(detailRect.right,
@@ -984,11 +1148,21 @@ void Direct2DRenderer::Render(
                             filledRight, detailRect.bottom),
                         D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
                     m_pLyricHighlightBrush->SetOpacity(m_baseLyricAlpha *
-                        textAlpha * slide);
+                        textAlpha * (1.0f - slide));
                     m_pRenderTarget->DrawTextLayout(origin,
                         m_pCurrentLyricLayout.Get(), m_pLyricHighlightBrush.Get());
                     m_pRenderTarget->PopAxisAlignedClip();
                 }
+            }
+            if (transition.nextIndex >= 0 && m_pUpcomingLyricLayout && slide > 0.0f) {
+                const float drawX = m_upcomingLyricWidth > middleWidth
+                    ? middleLeft : middleLeft + (middleWidth - m_upcomingLyricWidth) * 0.5f;
+                const auto origin = D2D1::Point2F(drawX, detailRect.top + (1.0f - slide) * lineH);
+                // Preview is unfilled. Its karaoke clock starts only when the
+                // timeline selects it at the actual timestamp.
+                m_pTextSecondaryBrush->SetOpacity(m_baseTextSecondaryAlpha * textAlpha * slide);
+                m_pRenderTarget->DrawTextLayout(origin, m_pUpcomingLyricLayout.Get(),
+                    m_pTextSecondaryBrush.Get());
             }
             m_pRenderTarget->PopAxisAlignedClip();
         }
@@ -1026,106 +1200,118 @@ void Direct2DRenderer::Render(
     }
 
     HRESULT hr = m_pRenderTarget->EndDraw();
-    if (hr == D2DERR_RECREATE_TARGET) {
+    if (FAILED(hr)) {
         DiscardDeviceResources();
-        return;
+        return hr;
     }
-    if (FAILED(hr)) return;
 
-    // Blur each hover surface inside its own rounded bounds; the FFT stays untouched.
     m_rcBtnOutputDevice = m_rcBtnPrev = m_rcBtnNext = m_rcBtnPlayPause =
         D2D1::RectF(0, 0, 0, 0);
-    if (coverEased > 0.002f) {
-        RECT coverArea{rcBar.left + static_cast<LONG>(artRect.left),
-            rcBar.top + static_cast<LONG>(artRect.top),
-            rcBar.left + static_cast<LONG>(artRect.right),
-            rcBar.top + static_cast<LONG>(artRect.bottom)};
-        BlurRoundedPixels(coverArea, coverEased * 0.95f, 6.0f * dpiScale);
-    }
-    if (eased > 0.002f && middleWidth > 30.0f * dpiScale) {
-        RECT middleArea{rcBar.left + static_cast<LONG>(middleLeft), rcBar.top,
-            rcBar.left + static_cast<LONG>(middleRight), rcBar.bottom};
-        BlurRoundedPixels(middleArea, eased * 0.95f, 6.0f * dpiScale);
-    }
-    if (coverEased > 0.002f || (eased > 0.002f && middleWidth > 30.0f * dpiScale)) {
+    if (needsBlur) {
+        // Pass 2 composites the layer into the swap chain buffer. The hover
+        // surfaces are blurred here, where the content is already complete.
+        resourceHr = AcquireBackBuffer();
+        if (FAILED(resourceHr)) {
+            DiscardDeviceResources();
+            return resourceHr;
+        }
         m_pRenderTarget->BeginDraw();
-        m_pRenderTarget->SetTransform(D2D1::Matrix3x2F::Translation(
-            static_cast<float>(rcBar.left), static_cast<float>(rcBar.top)));
+        m_pRenderTarget->SetTransform(D2D1::Matrix3x2F::Identity());
+        m_pRenderTarget->Clear(D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.0f));
+        m_pRenderTarget->DrawBitmap(m_pContentBitmap.Get(),
+            D2D1::RectF(0.0f, 0.0f, static_cast<float>(m_width),
+                static_cast<float>(m_height)),
+            1.0f, D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR);
+
+        // Blur each hover surface inside its own rounded bounds; the FFT stays untouched.
         if (coverEased > 0.002f) {
-            m_pFrostedBgBrush->SetOpacity((0.58f +
-                0.08f * m_btnHoverAlpha[3]) * coverEased);
-            m_pRenderTarget->FillRoundedRectangle(artRounded,
-                m_pFrostedBgBrush.Get());
-            m_rcBtnPlayPause = artRect;
-            const float inset = 2.0f * dpiScale;
-            const auto iconRect = D2D1::RectF(artRect.left + inset,
-                artRect.top + inset, artRect.right - inset, artRect.bottom - inset);
-            m_pBtnIconBrush->SetOpacity(m_baseBtnIconAlpha * coverEased);
-            if (track.isPlaying) DrawVectorPause(iconRect);
-            else DrawVectorPlay(iconRect);
+            BlurRegion(D2D1::RectF(
+                artRect.left,
+                artRect.top,
+                artRect.right,
+                artRect.bottom),
+                coverEased * 0.95f, 6.0f * dpiScale);
         }
         if (eased > 0.002f && middleWidth > 30.0f * dpiScale) {
-            const auto middleRect = D2D1::RectF(middleLeft, 0.0f,
-                middleRight, barHeight);
-            m_pFrostedBgBrush->SetOpacity((m_baseBgAlpha + 0.06f) * eased);
-            m_pRenderTarget->FillRoundedRectangle(D2D1::RoundedRect(middleRect,
-                6.0f * dpiScale, 6.0f * dpiScale), m_pFrostedBgBrush.Get());
+            BlurRegion(D2D1::RectF(
+                middleLeft,
+                0.0f,
+                middleRight,
+                barHeight),
+                eased * 0.95f, 6.0f * dpiScale);
+        }
+        if (coverEased > 0.002f || (eased > 0.002f && middleWidth > 30.0f * dpiScale)) {
+            if (coverEased > 0.002f) {
+                m_pFrostedBgBrush->SetOpacity((0.58f +
+                    0.08f * m_btnHoverAlpha[3]) * coverEased);
+                m_pRenderTarget->FillRoundedRectangle(artRounded,
+                    m_pFrostedBgBrush.Get());
+                m_rcBtnPlayPause = artRect;
+                const float inset = 2.0f * dpiScale;
+                const auto iconRect = D2D1::RectF(artRect.left + inset,
+                    artRect.top + inset, artRect.right - inset, artRect.bottom - inset);
+                m_pBtnIconBrush->SetOpacity(m_baseBtnIconAlpha * coverEased);
+                if (track.isPlaying) DrawVectorPause(iconRect);
+                else DrawVectorPlay(iconRect);
+            }
+            if (eased > 0.002f && middleWidth > 30.0f * dpiScale) {
+                const auto middleRect = D2D1::RectF(middleLeft, 0.0f,
+                    middleRight, barHeight);
+                m_pFrostedBgBrush->SetOpacity((m_baseBgAlpha + 0.06f) * eased);
+                m_pRenderTarget->FillRoundedRectangle(D2D1::RoundedRect(middleRect,
+                    6.0f * dpiScale, 6.0f * dpiScale), m_pFrostedBgBrush.Get());
 
-            const float buttonGap = 8.0f * dpiScale;
-            const float buttonSize = std::min(26.0f * dpiScale,
-                std::max(0.0f, (middleWidth - 2.0f * buttonGap -
-                    4.0f * dpiScale) / 3.0f));
-            if (buttonSize >= 12.0f * dpiScale) {
-                const float totalWidth = 3.0f * buttonSize + 2.0f * buttonGap;
-                const float startX = (middleLeft + middleRight - totalWidth) * 0.5f;
-                const float buttonY = (barHeight - buttonSize) * 0.5f;
-                m_rcBtnOutputDevice = D2D1::RectF(startX, buttonY,
-                    startX + buttonSize, buttonY + buttonSize);
-                m_pBtnIconBrush->SetOpacity(m_baseBtnIconAlpha * eased);
-                auto drawHover = [&](const D2D1_RECT_F& rect, int index) {
-                    const float opacity = m_btnHoverAlpha[index] * eased;
-                    if (opacity > 0.005f) {
-                        m_pBtnHoverBrush->SetOpacity(m_baseBtnHoverAlpha * opacity);
-                        m_pRenderTarget->FillRoundedRectangle(
-                            D2D1::RoundedRect(rect, 6.0f * dpiScale,
-                                6.0f * dpiScale), m_pBtnHoverBrush.Get());
-                    }
-                };
-                drawHover(m_rcBtnOutputDevice, 0);
-                DrawVectorStereo(m_rcBtnOutputDevice);
-                m_rcBtnPrev = D2D1::RectF(m_rcBtnOutputDevice.right + buttonGap,
-                    buttonY, m_rcBtnOutputDevice.right + buttonGap + buttonSize,
-                    buttonY + buttonSize);
-                m_rcBtnNext = D2D1::RectF(m_rcBtnPrev.right + buttonGap,
-                    buttonY, m_rcBtnPrev.right + buttonGap + buttonSize,
-                    buttonY + buttonSize);
-                drawHover(m_rcBtnPrev, 1);
-                DrawVectorPrev(m_rcBtnPrev);
-                drawHover(m_rcBtnNext, 2);
-                DrawVectorNext(m_rcBtnNext);
+                const float buttonGap = 8.0f * dpiScale;
+                const float buttonSize = std::min(26.0f * dpiScale,
+                    std::max(0.0f, (middleWidth - 2.0f * buttonGap -
+                        4.0f * dpiScale) / 3.0f));
+                if (buttonSize >= 12.0f * dpiScale) {
+                    const float totalWidth = 3.0f * buttonSize + 2.0f * buttonGap;
+                    const float startX = (middleLeft + middleRight - totalWidth) * 0.5f;
+                    const float buttonY = (barHeight - buttonSize) * 0.5f;
+                    m_rcBtnOutputDevice = D2D1::RectF(startX, buttonY,
+                        startX + buttonSize, buttonY + buttonSize);
+                    m_pBtnIconBrush->SetOpacity(m_baseBtnIconAlpha * eased);
+                    auto drawHover = [&](const D2D1_RECT_F& rect, int index) {
+                        const float opacity = m_btnHoverAlpha[index] * eased;
+                        if (opacity > 0.005f) {
+                            m_pBtnHoverBrush->SetOpacity(m_baseBtnHoverAlpha * opacity);
+                            m_pRenderTarget->FillRoundedRectangle(
+                                D2D1::RoundedRect(rect, 6.0f * dpiScale,
+                                    6.0f * dpiScale), m_pBtnHoverBrush.Get());
+                        }
+                    };
+                    drawHover(m_rcBtnOutputDevice, 0);
+                    DrawVectorStereo(m_rcBtnOutputDevice);
+                    m_rcBtnPrev = D2D1::RectF(m_rcBtnOutputDevice.right + buttonGap,
+                        buttonY, m_rcBtnOutputDevice.right + buttonGap + buttonSize,
+                        buttonY + buttonSize);
+                    m_rcBtnNext = D2D1::RectF(m_rcBtnPrev.right + buttonGap,
+                        buttonY, m_rcBtnPrev.right + buttonGap + buttonSize,
+                        buttonY + buttonSize);
+                    drawHover(m_rcBtnPrev, 1);
+                    DrawVectorPrev(m_rcBtnPrev);
+                    drawHover(m_rcBtnNext, 2);
+                    DrawVectorNext(m_rcBtnNext);
+                }
             }
         }
+
         hr = m_pRenderTarget->EndDraw();
-        if (hr == D2DERR_RECREATE_TARGET) {
+        if (FAILED(hr)) {
             DiscardDeviceResources();
-            return;
+            return hr;
         }
-        if (FAILED(hr)) return;
     }
 
-    // Direct hardware composite update to DWM via UpdateLayeredWindow
-    HDC hdcScreen = GetDC(nullptr);
-    POINT ptSrc{ 0, 0 };
-    SIZE sz{ static_cast<LONG>(m_width), static_cast<LONG>(m_height) };
-    BLENDFUNCTION blend{};
-    blend.BlendOp = AC_SRC_OVER;
-    blend.BlendFlags = 0;
-    blend.SourceConstantAlpha = 255;
-    blend.AlphaFormat = AC_SRC_ALPHA;
+    // Unbind the flip model buffer before it is presented.
+    m_pRenderTarget->SetTarget(nullptr);
+    m_pBackBufferBitmap.Reset();
 
-    UpdateLayeredWindow(m_hWnd, hdcScreen, nullptr, &sz,
-        m_hMemDC, &ptSrc, 0, &blend, ULW_ALPHA);
-    ReleaseDC(nullptr, hdcScreen);
+    // Hand the finished frame to DWM.
+    hr = Present();
+    if (FAILED(hr)) DiscardDeviceResources();
+    return hr;
 }
 
 } // namespace MusicBar

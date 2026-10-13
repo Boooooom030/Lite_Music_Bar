@@ -2,6 +2,7 @@
 
 #include <windows.h>
 #include <memory>
+#include <functional>
 #include "Types.hpp"
 #include "SettingsStore.hpp"
 #include "AnimationClock.hpp"
@@ -18,11 +19,13 @@ namespace MusicBar {
 
 class App {
 public:
-    App();
+    explicit App(std::function<void()> requestExit);
     ~App();
 
-    bool Initialize(HINSTANCE hInstance);
-    int Run();
+    bool Initialize(HINSTANCE hInstance, bool openSettingsRequested = false);
+    int Run(const std::function<int()>& runEventLoop);
+    void OpenSettings();
+    static bool RequestExitForExistingInstance();
 
 private:
     enum class PressTarget {
@@ -56,9 +59,9 @@ private:
     void ApplySettings(const AppSettings& settings);
     void PersistSettings();
     void ReloadSettingsIfChanged();
-    void OpenSettings();
 
     static inline App* s_pInstance = nullptr;
+    std::function<void()> m_requestExit;
 
     HINSTANCE m_hInstance = nullptr;
     HWND m_hWnd = nullptr;

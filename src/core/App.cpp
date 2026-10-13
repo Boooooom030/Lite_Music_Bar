@@ -1,5 +1,6 @@
 #include "App.hpp"
 #include "lyrics/LyricsSourceSelector.hpp"
+#include "lyrics/LyricsTimeline.hpp"
 #include "audio/OutputDeviceService.hpp"
 #include <windowsx.h>
 #include <algorithm>
@@ -16,6 +17,14 @@ constexpr UINT WM_APP_ANIMATION_TICK = WM_APP + 104;
 constexpr int kAnimationIntervalMs = 16;
 
 namespace {
+HWND FindExistingMusicBarWindow() {
+    if (const HWND floating = FindWindowW(L"MusicBar_Taskbar_Host", nullptr)) return floating;
+    // Docking reparents the host into Explorer's taskbar. FindWindow only
+    // searches top-level windows, so IPC must also look for the docked child.
+    const HWND taskbar = FindWindowW(L"Shell_TrayWnd", nullptr);
+    return taskbar ? FindWindowExW(taskbar, nullptr, L"MusicBar_Taskbar_Host", nullptr) : nullptr;
+}
+
 bool PassedDragThreshold(const POINT& start, const POINT& current) {
     return std::abs(current.x - start.x) >=
             std::max(1, GetSystemMetrics(SM_CXDRAG)) ||
@@ -24,7 +33,7 @@ bool PassedDragThreshold(const POINT& start, const POINT& current) {
 }
 } // namespace
 
-App::App() {
+App::App(std::function<void()> requestExit) : m_requestExit(std::move(requestExit)) {
     s_pInstance = this;
 }
 
@@ -69,6 +78,7 @@ void App::ApplySettings(const AppSettings& settings) {
         m_lastRequestedLyricsSource = source;
         m_lyrics.RequestLyrics(m_currentTrack.title, m_currentTrack.artist,
             m_currentTrack.durationMs, source);
+        m_currentLyrics = m_lyrics.GetCurrentLyrics();
     }
     m_settingsWindow.SetSettings(settings);
     RepaintBar();
@@ -78,7 +88,9 @@ void App::PersistSettings() {
     if (SettingsStore::Save(CurrentSettings())) {
         m_settingsFileStamp = SettingsStore::GetFileStamp();
     } else if (m_hWnd) {
-        MessageBoxW(m_hWnd, L"无法保存设置文件。", L"MusicBar",
+        MessageBoxW(m_hWnd,
+            L"无法保存 EXE 旁 data 目录中的设置文件。请将整个程序目录放到可写的位置。",
+            L"MusicBar",
             MB_OK | MB_ICONWARNING);
     }
 }
@@ -99,6 +111,11 @@ void App::OpenSettings() {
             ApplySettings(settings);
             PersistSettings();
         });
+}
+
+bool App::RequestExitForExistingInstance() {
+    const HWND existing = FindExistingMusicBarWindow();
+    return existing && PostMessageW(existing, WM_COMMAND, IDM_EXIT, 0);
 }
 
 App::~App() {
@@ -148,7 +165,7 @@ LRESULT CALLBACK App::StaticWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM l
     return DefWindowProcW(hWnd, msg, wParam, lParam);
 }
 
-bool App::Initialize(HINSTANCE hInstance) {
+bool App::Initialize(HINSTANCE hInstance, bool openSettingsRequested) {
     m_hInstance = hInstance;
     m_settingsFileStamp = SettingsStore::GetFileStamp();
     AppSettings savedSettings{};
@@ -159,10 +176,14 @@ bool App::Initialize(HINSTANCE hInstance) {
     // Single-instance enforcement
     m_hSingleInstanceMutex = CreateMutexW(nullptr, TRUE, L"Global\\MusicBar_Cpp_SingleInstance_Mutex");
     if (GetLastError() == ERROR_ALREADY_EXISTS) {
-        HWND hExisting = FindWindowW(L"MusicBar_Taskbar_Host", nullptr);
+        HWND hExisting = FindExistingMusicBarWindow();
         if (hExisting) {
-            ShowWindow(hExisting, SW_SHOW);
-            SetForegroundWindow(hExisting);
+            if (openSettingsRequested) {
+                PostMessageW(hExisting, WM_COMMAND, IDM_SETTINGS, 0);
+            } else {
+                ShowWindow(hExisting, SW_SHOW);
+                SetForegroundWindow(hExisting);
+            }
         }
         return false;
     }
@@ -186,9 +207,9 @@ bool App::Initialize(HINSTANCE hInstance) {
 
     m_msgTaskbarCreated = RegisterWindowMessageW(L"TaskbarCreated");
 
-    // Create host window with Layered child styles
+    // The composition host has no GDI redirection bitmap.
     m_hWnd = CreateWindowExW(
-        WS_EX_LAYERED | WS_EX_TOOLWINDOW,
+        WS_EX_NOREDIRECTIONBITMAP | WS_EX_TOOLWINDOW,
         L"MusicBar_Taskbar_Host",
         L"MusicBar",
         WS_POPUP | WS_CLIPSIBLINGS,
@@ -204,7 +225,7 @@ bool App::Initialize(HINSTANCE hInstance) {
     // Dock as direct child of the Windows taskbar
     m_dock.Attach(m_hWnd);
 
-    // Initialize Direct2D with layered DC render target
+    // Initialize GPU drawing and DirectComposition presentation.
     if (!m_renderer.Initialize(m_hWnd)) {
         return false;
     }
@@ -251,25 +272,19 @@ bool App::Initialize(HINSTANCE hInstance) {
     return true;
 }
 
-int App::Run() {
-    MSG msg;
-    while (GetMessageW(&msg, nullptr, 0, 0)) {
-        TranslateMessage(&msg);
-        DispatchMessageW(&msg);
-    }
-    return static_cast<int>(msg.wParam);
+int App::Run(const std::function<int()>& runEventLoop) {
+    // The entry point owns the single Qt loop; keep framework types out of the
+    // native coordinator. Posted HWND messages still reach the same WndProc.
+    if (!runEventLoop) return 1;
+    const int exitCode = runEventLoop();
+    m_settingsWindow.Shutdown();
+    return exitCode;
 }
 
 // One animation frame: advance the lyric timeline and the spectrum, then repaint
 // when anything is still moving. Called from the animation clock (and from the
 // SetTimer fallback).
 void App::OnAnimationTick() {
-    if (!m_currentTrack.title.empty()) {
-        int64_t posMs = m_currentTrack.GetCurrentInterpolatedPositionMs();
-        m_lyrics.UpdatePosition(posMs);
-        m_currentLyrics = m_lyrics.GetCurrentLyrics();
-    }
-
     m_currentSpectrum = m_audio.GetSpectrum();
     if (m_audio.GetCaptureMode() == AudioCaptureMode::PlayerProcess &&
         (m_currentTrack.title.empty() || !m_currentTrack.isPlaying)) {
@@ -283,15 +298,16 @@ void App::OnAnimationTick() {
         m_currentSpectrum.bands.begin(), m_currentSpectrum.bands.end(),
         [](float level) { return level > 0.01f; });
     if (m_currentTrack.isPlaying || m_currentSpectrum.hasAudio ||
-        spectrumIsMoving || m_isHovered ||
-        (m_isCoverHovered && !m_currentTrack.title.empty()) ||
-        m_renderer.HasPendingAnimation()) {
+        spectrumIsMoving || m_renderer.HasPendingAnimation()) {
         RepaintBar();
     }
 }
 
 void App::RepaintBar() {
     if (!m_isVisible || !m_hWnd) return;
+
+    UpdateLyricPosition(m_currentLyrics,
+        m_currentTrack.GetCurrentInterpolatedPositionMs());
 
     RECT rcBar = m_dock.GetBarRect();
     POINT screenPos = m_dock.GetScreenPos();
@@ -402,8 +418,8 @@ LRESULT App::HandleMessage(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 
     switch (msg) {
     case WM_APP_ANIMATION_TICK:
-        m_animationClock.Consumed();
         OnAnimationTick();
+        m_animationClock.Consumed();
         return 0;
 
     case WM_TIMER: {
@@ -436,6 +452,7 @@ LRESULT App::HandleMessage(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         // Windows theme (Dark / Light) or personalization changed
         m_renderer.UpdateTheme();
         m_volumePopup.SetLightTheme(m_renderer.IsLightTheme());
+        m_settingsWindow.OnSystemThemeChanged();
         RepaintBar();
         return 0;
     }
@@ -752,6 +769,7 @@ LRESULT App::HandleMessage(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                 m_currentTrack.durationMs,
                 src
             );
+            m_currentLyrics = m_lyrics.GetCurrentLyrics();
             break;
         }
 
@@ -780,7 +798,15 @@ LRESULT App::HandleMessage(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         m_mediaSession.Shutdown();
         m_audio.Stop();
         m_dock.Detach();
-        PostQuitMessage(0);
+        // Ask the Qt event loop to stop. The settings window is released in
+        // App::Run() once the loop has returned, while the QApplication is
+        // still alive; PostQuitMessage() stays as the fallback for a process
+        // whose Qt loop never started.
+        if (m_requestExit) {
+            m_requestExit();
+        } else {
+            PostQuitMessage(0);
+        }
         return 0;
     }
 

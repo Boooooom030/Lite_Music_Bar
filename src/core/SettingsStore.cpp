@@ -36,15 +36,35 @@ bool ParseSource(const std::string& value, LyricsSource& source) {
 } // namespace
 
 std::wstring SettingsStore::GetPath() {
-    const DWORD length = GetEnvironmentVariableW(L"LOCALAPPDATA", nullptr, 0);
-    if (length == 0) return {};
-    std::wstring localAppData(length, L'\0');
-    const DWORD copied = GetEnvironmentVariableW(
-        L"LOCALAPPDATA", localAppData.data(), length);
-    if (copied == 0 || copied >= length) return {};
-    localAppData.resize(copied);
-    return (std::filesystem::path(localAppData) /
-        L"MusicBar" / L"settings.json").wstring();
+    // Resolve from the executable, never from Explorer/shortcut's working
+    // directory. A portable build must not fall back to the user profile.
+#ifdef MUSICBAR_TESTING
+    // Test targets use an isolated stand-in for the executable directory.
+    // This override is not compiled into MusicBar.exe.
+    const DWORD length = GetEnvironmentVariableW(
+        L"MUSICBAR_TEST_EXECUTABLE_DIRECTORY", nullptr, 0);
+    if (length > 0) {
+        std::wstring directory(length, L'\0');
+        const DWORD copied = GetEnvironmentVariableW(
+            L"MUSICBAR_TEST_EXECUTABLE_DIRECTORY", directory.data(), length);
+        if (copied == 0 || copied >= length) return {};
+        directory.resize(copied);
+        return (std::filesystem::path(directory) / L"data" / L"settings.json").wstring();
+    }
+#endif
+    std::wstring executable(512, L'\0');
+    while (executable.size() <= 32768) {
+        const DWORD copied = GetModuleFileNameW(nullptr, executable.data(),
+            static_cast<DWORD>(executable.size()));
+        if (copied == 0) return {};
+        if (copied < executable.size()) {
+            executable.resize(copied);
+            return (std::filesystem::path(executable).parent_path() /
+                L"data" / L"settings.json").wstring();
+        }
+        executable.resize(executable.size() * 2);
+    }
+    return {};
 }
 
 uint64_t SettingsStore::GetFileStamp() {

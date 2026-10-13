@@ -19,6 +19,7 @@ public:
     using LyricsLoadedCallback = std::function<void(const LyricDocument&)>;
 
     LyricsService();
+    explicit LyricsService(std::vector<std::unique_ptr<ILyricsProvider>> providers);
     ~LyricsService();
 
     void SetCallback(LyricsLoadedCallback cb) { m_callback = cb; }
@@ -29,8 +30,6 @@ public:
         int64_t durationMs,
         LyricsSource source = LyricsSource::Auto
     );
-
-    void UpdatePosition(int64_t positionMs);
 
     LyricDocument GetCurrentLyrics() const;
     void Clear();

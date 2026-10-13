@@ -1,6 +1,6 @@
 #include "NetEaseProvider.hpp"
 #include "lyrics/Decrypter.hpp"
-#include "lyrics/LyricsParser.hpp"
+#include "NetEaseLyricsResponse.hpp"
 #include "net/HttpClient.hpp"
 #include <nlohmann/json.hpp>
 
@@ -56,35 +56,11 @@ std::optional<LyricDocument> NetEaseProvider::FetchLyrics(
         return std::nullopt;
     }
 
-    auto lyricJson = nlohmann::json::parse(lyricResp.body, nullptr, false);
-    if (!lyricJson.is_object()) return std::nullopt;
-
-    std::string mainLyric;
-    std::string transLyric;
-
-    // Prefer syllable-level YRC if available
-    if (lyricJson.contains("yrc") && lyricJson["yrc"].is_object() &&
-        lyricJson["yrc"].contains("lyric") &&
-        lyricJson["yrc"]["lyric"].is_string()) {
-        mainLyric = lyricJson["yrc"]["lyric"].get<std::string>();
-    } else if (lyricJson.contains("lrc") && lyricJson["lrc"].is_object() &&
-        lyricJson["lrc"].contains("lyric") &&
-        lyricJson["lrc"]["lyric"].is_string()) {
-        mainLyric = lyricJson["lrc"]["lyric"].get<std::string>();
-    }
-
-    if (lyricJson.contains("tlyric") && lyricJson["tlyric"].is_object() &&
-        lyricJson["tlyric"].contains("lyric") &&
-        lyricJson["tlyric"]["lyric"].is_string()) {
-        transLyric = lyricJson["tlyric"]["lyric"].get<std::string>();
-    }
-
-    if (mainLyric.empty()) return std::nullopt;
-
-    LyricDocument doc = LyricsParser::Parse(mainLyric, transLyric);
-    doc.title = title;
-    doc.artist = artist;
-    return doc;
+    auto document = ParseNetEaseLyricsResponse(lyricResp.body);
+    if (!document) return std::nullopt;
+    document->title = title;
+    document->artist = artist;
+    return document;
 }
 
 } // namespace MusicBar

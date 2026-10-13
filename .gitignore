@@ -3,6 +3,10 @@ build*/
 bin/
 obj/
 out/
+release/
+
+# Portable runtime data
+data/
 
 # Visual Studio temporary files
 .vs/

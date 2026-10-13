@@ -12,29 +12,30 @@ MusicBar 是一个嵌入 Windows 任务栏的原生音乐栏。左侧显示封�
 
 ## 下载与构建
 
-仓库发布后，可在 [Releases](../../releases) 下载 `MusicBar-Windows-x64.zip`，解压后运行其中的 `MusicBar.exe`。任务栏音乐栏和设置窗口都在这一个 EXE 中；压缩包另附第三方组件许可文本。无需安装 .NET 或 Visual C++ 运行库。GitHub Actions 在每次构建后保存压缩包；推送 `v` 开头的版本标签会创建 Release。首次发布前请先确认 Windows 工作流成功运行。
+仓库发布后，可在 [Releases](../../releases) 下载 `MusicBar-Windows-x64.zip`，先解压整个 `MusicBar` 文件夹，再运行其中的 `MusicBar.exe`。任务栏音乐栏和设置窗口都在这一个 EXE 中；压缩包另附使用说明、构建信息和第三方许可文本。无需安装 .NET 或 Visual C++ 运行库。GitHub Actions 在每次构建后保存 ZIP 和 SHA-256 校验文件；推送 `v` 开头的版本标签会创建 Release。依赖准备、缓存与本地复现见 [CI 构建说明](docs/CI_BUILD.md)。
 
-需要 MSVC C++ 工具集、Windows SDK 和 CMake 3.28+。安装 Visual Studio 2022 时可直接使用：
+配置保存在 EXE 旁的 `data/settings.json`，不写入用户 AppData，也不读取旧版配置。歌词、封面和渲染缓存只在内存中，退出即释放。请将整个程序目录放到可写的位置；从快捷方式或其他工作目录启动也会使用 EXE 所在目录。更新时先退出程序，替换 EXE 并保留 `data`；删除时从托盘退出，然后删除整个解压目录，配置会一并删除。仅删除下载的 ZIP 不会清理已解压的文件。
 
-```powershell
-cmake -S . -B build-vs -G "Visual Studio 17 2022" -A x64
-cmake --build build-vs --config Release --parallel
-ctest --test-dir build-vs -C Release --output-on-failure
-```
-
-输出位于 `build-vs/Release/MusicBar.exe`，构建目录由 Git 忽略。核心程序使用 C++20、Win32、Direct2D、C++/WinRT 和 WASAPI。
-
-如果只安装了 Visual Studio 2026，请在其 **x64 Native Tools Command Prompt** 中使用 Ninja：
+需要 MSVC C++ 工具集、Windows SDK、CMake 3.28+、Ninja，以及 Qt 6.11.2 / Fluent-Qt v1.10.0 静态 Release SDK。Qt Gui 必须启用 HarfBuzz。SDK 默认位于 `~/Storage/tool/Qt-FluentQt`，准备方法和路径见 [环境记录](docs/FLUENT_QT_ENVIRONMENT.md)。
 
 ```powershell
-cmake -S . -B build-ninja -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
-cmake --build build-ninja --parallel
-ctest --test-dir build-ninja --output-on-failure
+cmd /d /c scripts\build-qt-release.cmd
+ctest --test-dir build-qt-release --output-on-failure
 ```
 
-此时输出位于 `build-ninja/MusicBar.exe`。
+输出位于 `build-qt-release/MusicBar.exe`。设置静态链接 Qt Widgets，任务栏仍使用 C++20、Win32、Direct2D、DirectComposition、C++/WinRT 和 WASAPI。开发时生成的 SettingsUiTests.exe 仅用于界面验证，不随产品分发。
 
-设置窗口内置于主程序，修改后立即保存到 `%LOCALAPPDATA%\MusicBar\settings.json`。界面跟随 Windows 应用亮暗主题，英文使用 Segoe UI Variable，简体中文指定等线字体。
+构建脚本会初始化本机 MSVC x64 环境。可通过 `MUSICBAR_BUILD_DIR` 指定独立输出目录，避免链接正在使用的 EXE；脚本只构建，不会启动或终止程序：
+
+```powershell
+$env:MUSICBAR_BUILD_DIR = Join-Path (Get-Location) 'build-qt-review'
+cmd /d /c scripts\build-qt-release.cmd
+ctest --test-dir build-qt-review --output-on-failure
+```
+
+也可通过构建脚本说明中的环境变量覆盖 SDK prefix 和 toolchain。
+
+设置窗口内置于主程序，左侧分类导航、右侧分组显示四项设置，修改后立即保存到 EXE 旁的 `data/settings.json`。界面跟随系统明暗／高对比主题，中文优先使用 Microsoft YaHei UI。可用 `MusicBar.exe --settings` 直接打开设置；已有实例时会通知已有实例打开窗口。关闭设置继续运行，退出程序仍使用托盘菜单。
 
 ## 项目文档
 
@@ -42,5 +43,6 @@ ctest --test-dir build-ninja --output-on-failure
 - [待办与人工验证](docs/ROADMAP.md)
 - [设置窗口与配置协议](docs/SETTINGS_GUI.md)
 - [第三方组件与许可](docs/THIRD_PARTY.md)
+- [GitHub Actions 构建与便携 ZIP](docs/CI_BUILD.md)
 
 项目自身目前未设置开源许可证；第三方组件仍遵循各自许可。

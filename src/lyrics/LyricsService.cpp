@@ -1,4 +1,5 @@
 #include "LyricsService.hpp"
+#include "LyricsFit.hpp"
 #include "providers/NetEaseProvider.hpp"
 #include "providers/KugouProvider.hpp"
 #include "providers/QQMusicProvider.hpp"
@@ -24,6 +25,11 @@ LyricsService::LyricsService() {
     m_providers.push_back(std::make_unique<KugouProvider>());
     m_providers.push_back(std::make_unique<SodaProvider>());
     m_providers.push_back(std::make_unique<LrclibProvider>());
+    m_fetchThread = std::thread(&LyricsService::WorkerLoop, this);
+}
+
+LyricsService::LyricsService(std::vector<std::unique_ptr<ILyricsProvider>> providers)
+    : m_providers(std::move(providers)) {
     m_fetchThread = std::thread(&LyricsService::WorkerLoop, this);
 }
 
@@ -123,43 +129,55 @@ void LyricsService::FetchWorker(
     LyricsSource source
 ) {
     std::optional<LyricDocument> result;
+    int producerIndex = -1;
+    // First non-empty result that does not fit the track duration. Providers are
+    // asked for another file first, but a mismatched lyric still beats no lyric.
+    std::optional<LyricDocument> mismatched;
+    int mismatchedIndex = -1;
     {
         std::lock_guard<std::mutex> docLock(m_docMutex);
         if (m_queryGeneration != gen) return;
     }
 
-    // If a specific provider was selected:
-    if (source != LyricsSource::Auto) {
-        size_t idx = static_cast<size_t>(source) - 1;
-        if (idx < m_providers.size()) {
-            try {
-                result = m_providers[idx]->FetchLyrics(title, artist, durationMs);
-            } catch (...) {
-                result.reset();
-            }
+    auto tryProvider = [&](size_t index) {
+        std::optional<LyricDocument> fetched;
+        try {
+            fetched = m_providers[index]->FetchLyrics(title, artist, durationMs);
+        } catch (...) {
+            fetched.reset();
         }
+        if (!fetched || (fetched->lines.empty() && !fetched->isInstrumental)) return;
+        if (!LyricsFitTrackDuration(*fetched, durationMs)) {
+            if (!mismatched) {
+                mismatched = std::move(fetched);
+                mismatchedIndex = static_cast<int>(index);
+            }
+            return;
+        }
+        result = std::move(fetched);
+        producerIndex = static_cast<int>(index);
+    };
+
+    // The selected source first, then every other provider in order.
+    if (source != LyricsSource::Auto) {
+        const size_t preferred = static_cast<size_t>(source) - 1;
+        if (preferred < m_providers.size()) tryProvider(preferred);
     }
 
-    // If auto or preferred source returned nothing, fallback across all providers
-    if (!result || result->lines.empty()) {
-        for (size_t i = 0; i < m_providers.size(); ++i) {
-            if (source != LyricsSource::Auto &&
-                i == static_cast<size_t>(source) - 1) continue;
-            // Check if superseded
-            {
-                std::lock_guard<std::mutex> docLock(m_docMutex);
-                if (m_queryGeneration != gen) return;
-            }
-
-            try {
-                result = m_providers[i]->FetchLyrics(title, artist, durationMs);
-            } catch (...) {
-                result.reset();
-            }
-            if (result && !result->lines.empty()) {
-                break;
-            }
+    for (size_t i = 0; i < m_providers.size() && !result; ++i) {
+        if (source != LyricsSource::Auto &&
+            i == static_cast<size_t>(source) - 1) continue;
+        // Check if superseded
+        {
+            std::lock_guard<std::mutex> docLock(m_docMutex);
+            if (m_queryGeneration != gen) return;
         }
+        tryProvider(i);
+    }
+
+    if (!result && mismatched) {
+        result = std::move(mismatched);
+        producerIndex = mismatchedIndex;
     }
 
     // Check again if superseded
@@ -168,14 +186,22 @@ void LyricsService::FetchWorker(
         if (m_queryGeneration != gen) return;
     }
 
-    if (result && !result->lines.empty()) {
-        const std::wstring key = CacheKey(title, artist, source);
-        {
+    if (result && (!result->lines.empty() || result->isInstrumental)) {
+        // Cache under the requested source and under the provider that actually
+        // produced the document, so switching to that source serves the same
+        // file instead of refetching the whole chain.
+        const LyricsSource producerSource = producerIndex >= 0
+            ? static_cast<LyricsSource>(producerIndex + 1) : source;
+        auto storeInCache = [this](const std::wstring& key, const LyricDocument& document) {
             std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
             if (m_cache.size() >= 50 && !m_cache.contains(key)) {
                 m_cache.erase(m_cache.begin());
             }
-            m_cache[key] = *result;
+            m_cache[key] = document;
+        };
+        storeInCache(CacheKey(title, artist, source), *result);
+        if (producerSource != source) {
+            storeInCache(CacheKey(title, artist, producerSource), *result);
         }
 
         LyricDocument published;
@@ -187,44 +213,6 @@ void LyricsService::FetchWorker(
         }
 
         if (m_callback) m_callback(published);
-    }
-}
-
-void LyricsService::UpdatePosition(int64_t positionMs) {
-    std::lock_guard<std::mutex> lock(m_docMutex);
-    m_currentDoc.activeSyllableIndex = -1;
-    m_currentDoc.syllableProgress = 0.0f;
-    if (m_currentDoc.lines.empty()) {
-        m_currentDoc.activeIndex = -1;
-        return;
-    }
-
-    int activeIdx = -1;
-    for (int i = 0; i < static_cast<int>(m_currentDoc.lines.size()); ++i) {
-        if (m_currentDoc.lines[i].startMs <= positionMs) {
-            activeIdx = i;
-        } else {
-            break;
-        }
-    }
-
-    m_currentDoc.activeIndex = activeIdx;
-    if (activeIdx >= 0 && activeIdx < static_cast<int>(m_currentDoc.lines.size())) {
-        const auto& line = m_currentDoc.lines[activeIdx];
-        if (line.HasKaraoke()) {
-            for (size_t i = 0; i < line.syllables.size(); ++i) {
-                const auto& syl = line.syllables[i];
-                if (positionMs < syl.startMs) break;
-                m_currentDoc.activeSyllableIndex = static_cast<int>(i);
-                m_currentDoc.syllableProgress = syl.durationMs > 0
-                    ? std::clamp(static_cast<float>(positionMs - syl.startMs) /
-                        static_cast<float>(syl.durationMs), 0.0f, 1.0f)
-                    : 1.0f;
-            }
-        } else if (line.durationMs > 0) {
-            m_currentDoc.syllableProgress = static_cast<float>(positionMs - line.startMs) / static_cast<float>(line.durationMs);
-            m_currentDoc.syllableProgress = std::clamp(m_currentDoc.syllableProgress, 0.0f, 1.0f);
-        }
     }
 }
 

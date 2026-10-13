@@ -1,0 +1,13 @@
+# Copied into <SDK root>/toolchains by prepare-qt-sdk.ps1.
+get_filename_component(FLUENT_QT_ENV_ROOT "${CMAKE_CURRENT_LIST_DIR}/.." ABSOLUTE)
+set(VCPKG_TARGET_TRIPLET x64-windows-static-release CACHE STRING "SDK target triplet")
+set(VCPKG_HOST_TRIPLET x64-windows-static-release CACHE STRING "SDK host triplet")
+set(VCPKG_INSTALLED_DIR "${FLUENT_QT_ENV_ROOT}/installed" CACHE PATH "SDK dependencies")
+set(VCPKG_OVERLAY_TRIPLETS "${FLUENT_QT_ENV_ROOT}/triplets" CACHE STRING "SDK triplets")
+set(VCPKG_MANIFEST_MODE OFF CACHE BOOL "Reuse the prepared SDK" FORCE)
+set(CMAKE_BUILD_TYPE Release CACHE STRING "SDK configuration")
+set(CMAKE_MSVC_RUNTIME_LIBRARY MultiThreaded CACHE STRING "Static MSVC CRT")
+if(NOT CMAKE_PROJECT_INCLUDE)
+    set(CMAKE_PROJECT_INCLUDE "${FLUENT_QT_ENV_ROOT}/toolchains/normalize-msvc-includes.cmake")
+endif()
+include("${FLUENT_QT_ENV_ROOT}/vcpkg/scripts/buildsystems/vcpkg.cmake")
