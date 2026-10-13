@@ -75,4 +75,6 @@ ctest --test-dir build-ci --output-on-failure --no-tests=error
 
 2026-10-13 已将当前源码推送到 `Boooooom030/Lite_Music_Bar` 的 `main`。首次 [真实 CI](https://github.com/Boooooom030/Lite_Music_Bar/actions/runs/38375858961) 成功构建／缓存 SDK，但链接 MusicBar 时发现上述协程 ABI 冲突；本机 MSVC 19.5x 的通过结果不能替代 MSVC 19.4x CI 验证。
 
-修正后的提交 `a65c9d7` 在 [C++20 SDK 冷启动运行](https://github.com/Boooooom030/Lite_Music_Bar/actions/runs/38381039523) 中成功完成依赖准备、应用构建、全部八项 CTest、ZIP 打包和上传。已下载 Actions 产物检查：EXE 为 28,945,408 字节，便携 ZIP 为 12,915,971 字节，31 个文件，只有一个运行 EXE，没有 DLL 或用户数据；`build-info.json` 的源码 commit 和 Qt C++20 标记正确，ZIP SHA-256 与旁附文件一致。新 MSVC 初始化脚本及完整 SDK 缓存的远端复用在后续运行核对；标签发布仍需另行验证。
+修正后的提交 `a65c9d7` 在 [C++20 SDK 冷启动运行](https://github.com/Boooooom030/Lite_Music_Bar/actions/runs/38381039523) 中成功完成依赖准备、应用构建、全部八项 CTest、ZIP 打包和上传。已下载 Actions 产物检查：EXE 为 28,945,408 字节，便携 ZIP 为 12,915,971 字节，31 个文件，只有一个运行 EXE，没有 DLL 或用户数据；`build-info.json` 的源码 commit 和 Qt C++20 标记正确，ZIP SHA-256 与旁附文件一致。
+
+提交 `2f4c9fd` 的 [缓存命中运行](https://github.com/Boooooom030/Lite_Music_Bar/actions/runs/38385970099) 也成功完成应用构建、全部八项 CTest、ZIP 打包和上传。日志确认精确命中 SDK cache、读取通过 C++20 检查的 receipt 并直接复用，系统 MSVC 初始化选中同一套 MSVC 14.44.35207 / Windows SDK 10.0.26100.0，不再出现旧初始化 action 的 Node 20 弃用警告。该运行从初始化到上传约三分钟。标签发布仍需另行验证。
