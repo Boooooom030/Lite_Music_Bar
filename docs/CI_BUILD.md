@@ -1,6 +1,15 @@
 # Windows CI 与便携分发
 
-工作流为 `.github/workflows/build-windows.yml`，在分支推送、PR 和手动触发时构建；`v*` 标签在构建与测试成功后发布 ZIP 和 SHA-256 附件。使用 Windows Server 2022 runner、MSVC x64、Ninja、静态 `/MT` Release，与 `scripts/build-qt-release.cmd` 共用应用构建入口。
+工作流为 `.github/workflows/build-windows.yml`，仅在推送 `v*` 版本标签时自动运行：构建、执行 CTest、打包 ZIP，成功后创建 GitHub Release 并上传 ZIP 和 SHA-256 附件。普通分支推送、PR 和手动触发均不运行该工作流。使用 Windows Server 2022 runner、MSVC x64、Ninja、静态 `/MT` Release，与 `scripts/build-qt-release.cmd` 共用应用构建入口。
+
+发布时，先提交并推送要发布的代码，再在该提交上创建新的版本标签。例如：
+
+```powershell
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+将 `v0.1.0` 换成实际版本号。标签必须指向包含当前工作流的提交；仅在本地创建标签不会触发 CI。触发配置遵循 [GitHub 的标签过滤规则](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#onpushbranchestagsbranches-ignoretags-ignore)。
 
 `scripts/ci/initialize-msvc.ps1` 使用系统 Visual Studio Installer 和 `vcvars64.bat` 初始化 x64 工具链，只导出编译器／SDK 环境到 `GITHUB_ENV`。避免依赖旧 Node 20 的 MSVC 初始化 action；不导出凭据或 GitHub runner 控制变量。
 

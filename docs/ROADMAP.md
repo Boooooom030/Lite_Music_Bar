@@ -12,6 +12,7 @@
 - [ ] 清理本机旧 `AppData/Local/MusicBar` 目录：自动审批拒绝删除已确认的 `settings.json`／`instr.log`，目前未删除；新版本不再使用该目录。
 - [x] 当前源码推送到 GitHub `main`；C++20 SDK 冷启动工作流构建、八项 CTest、便携 ZIP 打包与上传成功，下载产物的目录、单 EXE、版本信息和 SHA-256 检查通过，见 [真实运行](https://github.com/Boooooom030/Lite_Music_Bar/actions/runs/38381039523)。
 - [x] 新的系统 MSVC 初始化脚本与 SDK 缓存命中的 [远端运行](https://github.com/Boooooom030/Lite_Music_Bar/actions/runs/38385970099) 通过；无需重建依赖，应用构建、八项 CTest、ZIP 打包和上传成功，Node 20 初始化 action 的弃用警告已消除。
+- [x] 发布工作流改为仅由 `v*` 标签推送自动触发；构建、测试、打包后发布 ZIP 和 SHA-256，取消普通分支、PR 和手动触发。actionlint 校验通过。
 - [ ] 在目标 Windows 10/11 上人工启动下载的 CI ZIP 并检查任务栏与播放器功能。
 - [ ] 创建版本标签后确认自动生成的 Release 附件。
 
