@@ -54,7 +54,7 @@ $sdk = Get-Content -Raw -LiteralPath "$SdkRoot/sdk/receipt.json" | ConvertFrom-J
 @{
     sourceRevision = $SourceRevision; executableBytes = $size
     sha256 = (Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash.ToLowerInvariant()
-    qt = $sdk.qt; fluentQt = $sdk.fluentQt; vcpkg = $sdk.vcpkg
+    qt = $sdk.qt; qtCppStandard = $sdk.qtCppStandard; fluentQt = $sdk.fluentQt; vcpkg = $sdk.vcpkg
     crt = $sdk.crt; configuration = $sdk.configuration; imports = $imports
 } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath "$portable/build-info.json" -Encoding utf8
 Compress-Archive -Path "$package/*" -DestinationPath "$OutputDirectory/MusicBar-Windows-x64.zip"

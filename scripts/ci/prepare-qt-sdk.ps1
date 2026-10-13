@@ -21,8 +21,10 @@ function Assert-Commit([string]$Directory, [string]$Expected) {
 function Assert-Qt([string]$Prefix) {
     $version = Get-Content -Raw -LiteralPath "$Prefix/include/Qt6/QtCore/qtcoreversion.h"
     $features = Get-Content -Raw -LiteralPath "$Prefix/include/Qt6/QtGui/qtgui-config.h"
+    $coreFeatures = Get-Content -Raw -LiteralPath "$Prefix/include/Qt6/QtCore/qconfig.h"
     if ($version -notmatch 'QTCORE_VERSION_STR "6\.11\.2"') { throw 'Qt 6.11.2 is required.' }
     if ($features -notmatch '#define QT_FEATURE_harfbuzz 1') { throw 'Qt Gui must include HarfBuzz.' }
+    if ($coreFeatures -notmatch '#define QT_FEATURE_cxx20 1') { throw 'Build Qt with FEATURE_cxx20=ON to match the application coroutine ABI.' }
     foreach ($file in @('lib/Qt6Core.lib', 'lib/Qt6Gui.lib', 'lib/Qt6Widgets.lib', 'share/Qt6/Qt6Config.cmake')) {
         if (-not (Test-Path -LiteralPath "$Prefix/$file" -PathType Leaf)) { throw "Missing static Qt SDK file: $file" }
     }
@@ -50,7 +52,7 @@ foreach ($file in @('msvc-x64-static-release.cmake', 'normalize-msvc-includes.cm
 if ($UseCachedSdk) {
     Assert-Qt $qtPrefix
     $receipt = Get-Content -Raw -LiteralPath "$SdkRoot/sdk/receipt.json" | ConvertFrom-Json
-    if ($receipt.vcpkg -ne $vcpkgCommit -or $receipt.fluentQt -ne $fluentCommit) { throw 'SDK cache revision mismatch.' }
+    if ($receipt.vcpkg -ne $vcpkgCommit -or $receipt.fluentQt -ne $fluentCommit -or $receipt.qtCppStandard -ne 20) { throw 'SDK cache revision/ABI mismatch.' }
     foreach ($file in @('lib/FluentQt.lib', 'lib/cmake/FluentQt/FluentQtConfig.cmake', 'share/licenses/FluentQt/LICENSE')) {
         if (-not (Test-Path -LiteralPath "$fluentPrefix/$file" -PathType Leaf)) { throw "Incomplete FluentQt cache: $file" }
     }
@@ -86,6 +88,6 @@ Invoke-Checked 'cmake' @(
 )
 Invoke-Checked 'cmake' @('--build', "$SdkRoot/build-fluent", '--target', 'FluentQt', '--parallel', '6')
 Invoke-Checked 'cmake' @('--install', "$SdkRoot/build-fluent", '--config', 'Release', '--component', 'Development')
-@{ qt = '6.11.2'; fluentQt = $fluentCommit; vcpkg = $vcpkgCommit; crt = 'MT'; configuration = 'Release' } |
+@{ qt = '6.11.2'; qtCppStandard = 20; fluentQt = $fluentCommit; vcpkg = $vcpkgCommit; crt = 'MT'; configuration = 'Release' } |
     ConvertTo-Json | Set-Content -LiteralPath "$SdkRoot/sdk/receipt.json" -Encoding utf8
 Write-Host "Static SDK ready: $SdkRoot"

@@ -46,7 +46,7 @@ if "%VS_INSTALL%"=="" (
     exit /b 1
 )
 call "%VS_INSTALL%\VC\Auxiliary\Build\vcvars64.bat" >nul
-if errorlevel 1 (
+if not "%ERRORLEVEL%"=="0" (
     echo [build-qt-release] Failed to initialize the MSVC x64 environment.
     exit /b 1
 )
@@ -61,10 +61,11 @@ cmake -S "%SOURCE_DIR%" -B "%BUILD_DIR%" -G Ninja ^
     -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded ^
     "-DCMAKE_TOOLCHAIN_FILE=%QT_FLUENT_TOOLCHAIN%" ^
     "-DCMAKE_PREFIX_PATH=%FLUENTQT_PREFIX%;%QT_FLUENT_PREFIX%"
-if errorlevel 1 exit /b 1
+if not "%ERRORLEVEL%"=="0" exit /b 1
 
 cmake --build "%BUILD_DIR%" --parallel 6
-if errorlevel 1 exit /b 1
+if not "%ERRORLEVEL%"=="0" exit /b 1
 
 echo [build-qt-release] Output: %BUILD_DIR%\MusicBar.exe
 endlocal
+exit /b 0

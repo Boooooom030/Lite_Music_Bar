@@ -5,6 +5,11 @@ if(CMAKE_TOOLCHAIN_FILE)
     message(STATUS "SDK toolchain: ${CMAKE_TOOLCHAIN_FILE}")
 endif()
 
+# All non-system runtime dependencies are static. Do not add vcpkg's DLL-copy
+# post-link commands: a restored SDK needs only its libraries/tools, not a
+# bootstrapped vcpkg.exe in the fresh registry checkout.
+set(VCPKG_APPLOCAL_DEPS OFF CACHE BOOL "No DLL deployment for the static application" FORCE)
+
 # The settings window ships its own icon, DPI awareness and version resource.
 enable_language(RC)
 
