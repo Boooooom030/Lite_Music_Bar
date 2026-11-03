@@ -2,7 +2,7 @@
 rem Build MusicBar (Release, x64, static CRT) against the machine-local
 rem Qt 6.11.2 + Fluent-Qt v1.10.0 static SDK.
 rem
-rem The script only configures and builds into build-qt-release; it never starts
+rem The script only configures and builds into build; it never starts
 rem the program and never replaces a running MusicBar.exe.
 rem
 rem Every path below can be overridden from the environment:
@@ -10,7 +10,7 @@ rem   QT_FLUENT_ROOT        SDK root        (default: %USERPROFILE%\Storage\tool
 rem   QT_FLUENT_PREFIX      Qt prefix       (default: <root>\installed\x64-windows-static-release)
 rem   FLUENTQT_PREFIX       FluentQt SDK    (default: <root>\sdk\FluentQt)
 rem   QT_FLUENT_TOOLCHAIN   CMake toolchain (default: <root>\toolchains\msvc-x64-static-release.cmake)
-rem   MUSICBAR_BUILD_DIR    Output tree     (default: <repo>\build-qt-release)
+rem   MUSICBAR_BUILD_DIR    Output tree     (default: <repo>\build)
 setlocal enabledelayedexpansion
 
 set "QT_FLUENT_ROOT=%QT_FLUENT_ROOT%"
@@ -52,7 +52,7 @@ if not "%ERRORLEVEL%"=="0" (
 )
 
 set "SOURCE_DIR=%~dp0.."
-set "BUILD_DIR=%SOURCE_DIR%\build-qt-release"
+set "BUILD_DIR=%SOURCE_DIR%\build"
 if not "%MUSICBAR_BUILD_DIR%"=="" set "BUILD_DIR=%MUSICBAR_BUILD_DIR%"
 
 cmake -S "%SOURCE_DIR%" -B "%BUILD_DIR%" -G Ninja ^
