@@ -1,9 +1,12 @@
 # CMake build output
 build*/
+/build*.log
+/settings-verification/
 bin/
 obj/
 out/
 release/
+bin/
 
 # Portable runtime data
 data/

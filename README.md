@@ -4,11 +4,10 @@ MusicBar 是一个嵌入 Windows 任务栏的原生音乐栏。左侧显示封�
 
 右键音乐栏或托盘图标，可勾选“锁定位置”防止误拖动；再次点击即可解锁。锁定状态会保存在本地设置中。
 
+我的做这个的初衷，是当我体验了[AF-Media-Ba](https://github.com/Fervent-Tempo/AF-Media-Bar)，但是当时他的设置非常的杂乱非常的糟糕，此外，功能也很不全面，我想把内存检测这个贴片删掉都不行，而且一个music bar竟然能占用三四百MB的内存？？？？，所以我就做了这个，算是一个lite版本
+
 ![MusicBar 任务栏效果](assets/screenshot.png)
 
-面向 Windows 10 1809+ 和 Windows 11。Release 构建将 MSVC 运行库静态链接到 `MusicBar.exe`，无需另外安装 .NET 或 Visual C++ 运行库。歌词需要联网获取。双击 EXE 启动，可从托盘菜单退出。
-
-自动歌词会优先查询当前播放器对应的平台。FFT 默认采集当前播放器进程的声音；在不支持按进程采集的旧版 Windows 上，继续使用系统混音采集。右键音乐栏或托盘图标打开“设置”，可手动切换到系统混音模式。
 
 ## 下载与构建
 
@@ -20,17 +19,17 @@ MusicBar 是一个嵌入 Windows 任务栏的原生音乐栏。左侧显示封�
 
 ```powershell
 cmd /d /c scripts\build-qt-release.cmd
-ctest --test-dir build-qt-release --output-on-failure
+ctest --test-dir build --output-on-failure
 ```
 
-输出位于 `build-qt-release/MusicBar.exe`。设置静态链接 Qt Widgets，任务栏仍使用 C++20、Win32、Direct2D、DirectComposition、C++/WinRT 和 WASAPI。开发时生成的 SettingsUiTests.exe 仅用于界面验证，不随产品分发。
+输出位于 `build/MusicBar.exe`。构建、测试和临时验证产物都放在 `build/` 中。设置静态链接 Qt Widgets，任务栏仍使用 C++20、Win32、Direct2D、DirectComposition、C++/WinRT 和 WASAPI。开发时生成的 SettingsUiTests.exe 仅用于界面验证，不随产品分发。
 
-构建脚本会初始化本机 MSVC x64 环境。可通过 `MUSICBAR_BUILD_DIR` 指定独立输出目录，避免链接正在使用的 EXE；脚本只构建，不会启动或终止程序：
+构建脚本会初始化本机 MSVC x64 环境。确需独立验证时，通过 `MUSICBAR_BUILD_DIR` 指定 `build/` 下的子目录，避免链接正在使用的 EXE；脚本只构建，不会启动或终止程序：
 
 ```powershell
-$env:MUSICBAR_BUILD_DIR = Join-Path (Get-Location) 'build-qt-review'
+$env:MUSICBAR_BUILD_DIR = Join-Path (Get-Location) 'build/validation'
 cmd /d /c scripts\build-qt-release.cmd
-ctest --test-dir build-qt-review --output-on-failure
+ctest --test-dir build/validation --output-on-failure
 ```
 
 也可通过构建脚本说明中的环境变量覆盖 SDK prefix 和 toolchain。
