@@ -6,6 +6,18 @@
 
 namespace MusicBar {
 
+// Keep the first nonblank line readable during the intro without selecting a
+// future line on the singing timeline or advancing its progress.
+inline int LyricDisplayIndex(const LyricDocument& lyrics) {
+    if (lyrics.isInstrumental || lyrics.noLyrics) return -1;
+    if (lyrics.activeIndex >= 0 && lyrics.activeIndex < static_cast<int>(lyrics.lines.size()))
+        return lyrics.activeIndex;
+    const auto first = std::find_if(lyrics.lines.begin(), lyrics.lines.end(), [](const LyricLine& line) {
+        return line.text.find_first_not_of(L" \t\r\n\u3000") != std::wstring::npos;
+    });
+    return first == lyrics.lines.end() ? -1 : static_cast<int>(first - lyrics.lines.begin());
+}
+
 // Playback state belongs to the UI's loaded document. Blank LRC markers still
 // delimit singing durations, but they do not replace the last visible lyric.
 inline void UpdateLyricPosition(LyricDocument& document, int64_t positionMs) {

@@ -4,6 +4,7 @@
 
 #include <QApplication>
 #include <QCloseEvent>
+#include <QColor>
 #include <QCursor>
 #include <QFontDatabase>
 #include <QGridLayout>
@@ -17,6 +18,7 @@
 #include <QVBoxLayout>
 #include <algorithm>
 #include <array>
+#include <dwmapi.h>
 #include <windows.h>
 
 #if !QT_CONFIG(harfbuzz)
@@ -235,17 +237,39 @@ fluent::FluentElement::Theme ResolveSystemTheme() {
         (highContrast.dwFlags & HCF_HIGHCONTRASTON) != 0) {
         return fluent::FluentElement::HighContrast;
     }
+    // Follow the taskbar, not the app-mode setting: the bar docks into the
+    // taskbar and the native window frame is painted from SystemUsesLightTheme,
+    // so reading AppsUseLightTheme here produced a light window with a dark
+    // title bar and a dark translucent side pane.
     DWORD light = 1;
     DWORD size = sizeof(light);
     HKEY key = nullptr;
     if (RegOpenKeyExW(HKEY_CURRENT_USER,
         L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
         0, KEY_READ, &key) == ERROR_SUCCESS) {
-        RegQueryValueExW(key, L"AppsUseLightTheme", nullptr, nullptr,
+        RegQueryValueExW(key, L"SystemUsesLightTheme", nullptr, nullptr,
             reinterpret_cast<BYTE*>(&light), &size);
         RegCloseKey(key);
     }
     return light != 0 ? fluent::FluentElement::Light : fluent::FluentElement::Dark;
+}
+
+QString ColorLabel(uint32_t rgb) {
+    return rgb == 0 ? QStringLiteral("自动")
+                    : QStringLiteral("#%1").arg(rgb, 6, 16, QChar('0')).toUpper();
+}
+
+// The bar's own accent, used while the setting follows the theme. The bar
+// resolves its palette from SystemUsesLightTheme, so the preview matches what
+// the taskbar row will actually paint.
+QColor ThemeAccentColor() {
+    DWORD light = 0;
+    DWORD size = sizeof(light);
+    const LSTATUS status = RegGetValueW(HKEY_CURRENT_USER,
+        L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
+        L"SystemUsesLightTheme", RRF_RT_REG_DWORD, nullptr, &light, &size);
+    return status == ERROR_SUCCESS && light != 0
+        ? QColor(0, 122, 217) : QColor(61, 224, 153);
 }
 } // namespace
 
@@ -256,8 +280,8 @@ void SettingsQtWindow::Show(const AppSettings& settings, ChangeHandler handler) 
     m_onChanged = std::move(handler);
     if (!m_window) BuildWindow();
     m_settings = settings;
-    SyncFromSettings(settings);
     UpdateThemeFromSystem();
+    SyncFromSettings(settings);
     if (!m_placed) {
         PlaceOnActiveScreen();
         m_placed = true;
@@ -269,6 +293,7 @@ void SettingsQtWindow::Show(const AppSettings& settings, ChangeHandler handler) 
     m_window->activateWindow();
     m_window->requestForegroundActivation();
     UpdateBackdrop();
+    ApplyCaptionTheme();
 }
 
 void SettingsQtWindow::SetSettings(const AppSettings& settings) {
@@ -281,6 +306,13 @@ bool SettingsQtWindow::IsOpen() const { return m_window && m_window->isVisible()
 void SettingsQtWindow::OnSystemThemeChanged() {
     UpdateThemeFromSystem();
     UpdateBackdrop();
+    ApplyCaptionTheme();
+    // "自动" follows the theme accent, so keep the preview honest when the
+    // user switches light/dark while the window is open.
+    if (m_window && m_settings.lyricColor == 0 && !m_lyricColorEdited) {
+        const QSignalBlocker colorBlocker(m_lyricColorPicker);
+        m_lyricColorPicker->setColor(ThemeAccentColor());
+    }
 }
 
 void SettingsQtWindow::Shutdown() {
@@ -290,6 +322,10 @@ void SettingsQtWindow::Shutdown() {
     m_lockSwitch = nullptr;
     m_showLyricsSwitch = nullptr;
     m_sourceCombo = nullptr;
+    m_lyricColorPicker = nullptr;
+    m_lyricColorFlyout = nullptr;
+    m_lyricColorButton = nullptr;
+    m_lyricColorAutoButton = nullptr;
     m_captureCombo = nullptr;
     m_reloadButton = nullptr;
     m_resetButton = nullptr;
@@ -430,6 +466,22 @@ void SettingsQtWindow::BuildWindow() {
     m_captureCombo->addItem(QStringLiteral("当前播放器"), static_cast<int>(SpectrumCaptureMode::Player));
     m_captureCombo->addItem(QStringLiteral("系统声音"), static_cast<int>(SpectrumCaptureMode::System));
 
+    // The picker is a fixed-size composite (spectrum, hue, value slider and the
+    // hex/RGB fields anchored to the bottom), so it lives in a flyout instead of
+    // stretching the settings page below the fold. The row's button shows the
+    // current value and opens it.
+    m_lyricColorPicker = new fluent::basicinput::ColorPicker();
+    m_lyricColorPicker->setObjectName(QStringLiteral("lyricColorPicker"));
+    m_lyricColorPicker->setAccessibleName(QStringLiteral("歌词颜色"));
+    m_lyricColorPicker->setAlphaEnabled(false);
+    m_lyricColorPicker->setFont(SettingsFont(Typography::FontRole::Body));
+    m_lyricColorPicker->setMinimumSize(420, 380);
+    m_lyricColorButton = new fluent::basicinput::Button(QStringLiteral("自动"));
+    m_lyricColorButton->setObjectName(QStringLiteral("lyricColorButton"));
+    m_lyricColorButton->setAccessibleName(QStringLiteral("选择歌词颜色"));
+    m_lyricColorButton->setFont(SettingsFont(Typography::FontRole::Body));
+    m_lyricColorButton->setMinimumSize(140, 32);
+
     auto* page = new QWidget();
     auto* pageLayout = new QVBoxLayout(page);
     pageLayout->setContentsMargins(kContentMargin, 0, kContentMargin, 20);
@@ -457,6 +509,29 @@ void SettingsQtWindow::BuildWindow() {
     lyricsSection->addWidget(new SettingsRow(QStringLiteral("sourceRow"),
         "ic_fluent_cloud_24_regular", QStringLiteral("歌词来源"),
         QStringLiteral("自动选择会优先匹配当前播放器。"), m_sourceCombo, page));
+    lyricsSection->addWidget(new SettingsRow(QStringLiteral("lyricColorRow"),
+        "ic_fluent_color_24_regular", QStringLiteral("歌词颜色"),
+        QStringLiteral("打开色盘取色，或直接输入 Hex/RGB；「自动」跟随主题强调色。"),
+        m_lyricColorButton, page));
+    m_lyricColorFlyout = new fluent::dialogs_flyouts::Flyout(m_window.get());
+    m_lyricColorFlyout->setObjectName(QStringLiteral("lyricColorFlyout"));
+    m_lyricColorFlyout->setPlacement(fluent::dialogs_flyouts::Flyout::Bottom);
+    m_lyricColorFlyout->setAnchorOffset(8);
+    auto* flyoutLayout = new QVBoxLayout(m_lyricColorFlyout);
+    flyoutLayout->setContentsMargins(24, 24, 24, 24);
+    flyoutLayout->setSpacing(12);
+    flyoutLayout->addWidget(m_lyricColorPicker);
+    auto* flyoutActions = new QHBoxLayout();
+    flyoutActions->setSpacing(8);
+    flyoutActions->addStretch();
+    m_lyricColorAutoButton = new fluent::basicinput::Button(
+        QStringLiteral("跟随主题"), m_lyricColorFlyout);
+    m_lyricColorAutoButton->setObjectName(QStringLiteral("lyricColorAutoButton"));
+    m_lyricColorAutoButton->setAccessibleName(QStringLiteral("歌词颜色跟随主题强调色"));
+    m_lyricColorAutoButton->setFont(SettingsFont(Typography::FontRole::Body));
+    m_lyricColorAutoButton->setMinimumSize(112, 32);
+    flyoutActions->addWidget(m_lyricColorAutoButton);
+    flyoutLayout->addLayout(flyoutActions);
     auto* audioSection = addSection(2, QStringLiteral("频谱采集"));
     audioSection->addWidget(new SettingsRow(QStringLiteral("audioRow"),
         "ic_fluent_speaker_2_24_regular", QStringLiteral("音频采集范围"),
@@ -513,7 +588,8 @@ void SettingsQtWindow::BuildWindow() {
     ConnectSignals();
     QWidget::setTabOrder(m_lockSwitch, m_showLyricsSwitch);
     QWidget::setTabOrder(m_showLyricsSwitch, m_sourceCombo);
-    QWidget::setTabOrder(m_sourceCombo, m_captureCombo);
+    QWidget::setTabOrder(m_sourceCombo, m_lyricColorButton);
+    QWidget::setTabOrder(m_lyricColorButton, m_captureCombo);
     QWidget::setTabOrder(m_captureCombo, m_reloadButton);
     QWidget::setTabOrder(m_reloadButton, m_resetButton);
 }
@@ -527,6 +603,17 @@ void SettingsQtWindow::ConnectSignals() {
         this, [this](int) { CommitFromControls(); });
     connect(m_captureCombo, qOverload<int>(&QComboBox::currentIndexChanged),
         this, [this](int) { CommitFromControls(); });
+    connect(m_lyricColorPicker, &fluent::basicinput::ColorPicker::colorChanged,
+        this, [this](const QColor&) {
+            m_lyricColorEdited = true;
+            CommitFromControls();
+        });
+    connect(m_lyricColorButton, &fluent::basicinput::Button::clicked,
+        this, [this] {
+            if (m_lyricColorFlyout) m_lyricColorFlyout->showAt(m_lyricColorButton);
+        });
+    connect(m_lyricColorAutoButton, &fluent::basicinput::Button::clicked,
+        this, &SettingsQtWindow::ResetLyricColor);
     connect(m_reloadButton, &fluent::basicinput::Button::clicked,
         this, &SettingsQtWindow::ReloadFromFile);
     connect(m_resetButton, &fluent::basicinput::Button::clicked,
@@ -544,6 +631,16 @@ void SettingsQtWindow::SyncFromSettings(const AppSettings& settings) {
     const int capture = m_captureCombo->findData(static_cast<int>(settings.fftCaptureMode));
     if (source >= 0) m_sourceCombo->setCurrentIndex(source);
     if (capture >= 0) m_captureCombo->setCurrentIndex(capture);
+    if (m_lyricColorPicker) {
+        m_lyricColorEdited = false;
+        const QColor target = settings.lyricColor != 0
+            ? QColor::fromRgb(settings.lyricColor) : ThemeAccentColor();
+        if (m_lyricColorPicker->color() != target) {
+            const QSignalBlocker colorBlocker(m_lyricColorPicker);
+            m_lyricColorPicker->setColor(target);
+        }
+    }
+    if (m_lyricColorButton) m_lyricColorButton->setText(ColorLabel(settings.lyricColor));
 }
 
 bool SettingsQtWindow::ReadControls(AppSettings& settings) const {
@@ -562,6 +659,8 @@ bool SettingsQtWindow::ReadControls(AppSettings& settings) const {
     settings.showLyrics = m_showLyricsSwitch->isOn();
     settings.lyricsSource = static_cast<LyricsSource>(sourceValue);
     settings.fftCaptureMode = static_cast<SpectrumCaptureMode>(captureValue);
+    settings.lyricColor = m_lyricColorEdited
+        ? (m_lyricColorPicker->color().rgb() & 0xFFFFFFu) : m_settings.lyricColor;
     return true;
 }
 
@@ -571,10 +670,22 @@ void SettingsQtWindow::CommitFromControls() {
     if (settings.positionLocked == m_settings.positionLocked &&
         settings.showLyrics == m_settings.showLyrics &&
         settings.lyricsSource == m_settings.lyricsSource &&
-        settings.fftCaptureMode == m_settings.fftCaptureMode) return;
+        settings.fftCaptureMode == m_settings.fftCaptureMode &&
+        settings.lyricColor == m_settings.lyricColor) return;
     m_settings = settings;
+    if (m_lyricColorButton) m_lyricColorButton->setText(ColorLabel(settings.lyricColor));
     PublishStatus({});
     if (m_onChanged) m_onChanged(m_settings);
+}
+
+void SettingsQtWindow::ResetLyricColor() {
+    AppSettings settings = m_settings;
+    settings.lyricColor = 0;
+    const bool changed = settings.lyricColor != m_settings.lyricColor;
+    m_settings = settings;
+    SyncFromSettings(settings);
+    PublishStatus({});
+    if (changed && m_onChanged) m_onChanged(m_settings);
 }
 
 void SettingsQtWindow::ReloadFromFile() {
@@ -602,6 +713,22 @@ void SettingsQtWindow::UpdateThemeFromSystem() {
     m_appliedTheme = static_cast<int>(theme);
     fluent::FluentElement::setTheme(theme);
     UpdateNavigationIcons();
+}
+
+void SettingsQtWindow::ApplyCaptionTheme() {
+    // DWM paints the caption from the system-theme flag, which can disagree
+    // with the app theme (dark taskbar, light apps). Reassert it so the title
+    // bar follows the Fluent surface instead of a dark strip above a light
+    // window.
+    if (!m_window) return;
+    const HWND hwnd = reinterpret_cast<HWND>(m_window->winId());
+    if (!hwnd) return;
+    const BOOL dark = ResolveSystemTheme() == fluent::FluentElement::Dark ? TRUE : FALSE;
+    constexpr DWORD kImmersiveDarkMode = 20; // DWMWA_USE_IMMERSIVE_DARK_MODE
+    constexpr DWORD kImmersiveDarkModeLegacy = 19; // Windows 10 1809-1909
+    if (FAILED(DwmSetWindowAttribute(hwnd, kImmersiveDarkMode, &dark, sizeof(dark)))) {
+        DwmSetWindowAttribute(hwnd, kImmersiveDarkModeLegacy, &dark, sizeof(dark));
+    }
 }
 
 void SettingsQtWindow::UpdateBackdrop() {
@@ -688,6 +815,7 @@ void SettingsQtWindow::CloseOpenPopups() {
     for (auto* combo : {m_sourceCombo, m_captureCombo}) {
         if (combo) combo->hidePopup();
     }
+    if (m_lyricColorFlyout && m_lyricColorFlyout->isOpen()) m_lyricColorFlyout->close();
 }
 
 void SettingsQtWindow::PublishStatus(const QString& message) {

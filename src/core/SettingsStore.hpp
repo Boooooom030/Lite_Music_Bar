@@ -17,6 +17,9 @@ struct AppSettings {
     bool positionLocked = false;
     LyricsSource lyricsSource = LyricsSource::Auto;
     SpectrumCaptureMode fftCaptureMode = SpectrumCaptureMode::Player;
+    // Lyric text colour as 0xRRGGBB. Zero follows the theme accent colour, so a
+    // fresh install matches the bar's own palette in both themes.
+    uint32_t lyricColor = 0;
 };
 
 class SettingsStore {

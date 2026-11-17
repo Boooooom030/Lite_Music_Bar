@@ -57,6 +57,7 @@ struct LyricDocument {
     int activeSyllableIndex = -1;
     float syllableProgress = 0.0f; // 0.0 to 1.0 inside current syllable/line
     bool isInstrumental = false; // Confirmed by a provider, not inferred from empty lyrics.
+    bool noLyrics = false; // Every provider answered; none had a lyric for this track.
 };
 
 enum class LyricsSource {

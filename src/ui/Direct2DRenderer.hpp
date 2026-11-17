@@ -33,6 +33,9 @@ public:
     bool Initialize(HWND hWnd);
     HRESULT Resize(UINT width, UINT height);
     HRESULT UpdateTheme();
+    // Lyric text colour as 0xRRGGBB; zero follows the theme accent colour.
+    void SetLyricColor(uint32_t rgb);
+    uint32_t LyricColor() const { return m_lyricColor; }
     bool IsLightTheme() const { return m_isLightTheme; }
     HRESULT Render(
         POINT screenPos,
@@ -91,7 +94,7 @@ private:
     Microsoft::WRL::ComPtr<ID2D1SolidColorBrush> pHitTestBrush;
     Microsoft::WRL::ComPtr<ID2D1SolidColorBrush> m_pTextPrimaryBrush;
     Microsoft::WRL::ComPtr<ID2D1SolidColorBrush> m_pTextSecondaryBrush;
-    Microsoft::WRL::ComPtr<ID2D1SolidColorBrush> m_pLyricHighlightBrush;
+    Microsoft::WRL::ComPtr<ID2D1SolidColorBrush> m_pLyricBrush;
     Microsoft::WRL::ComPtr<ID2D1SolidColorBrush> m_pProgressBgBrush;
     Microsoft::WRL::ComPtr<ID2D1SolidColorBrush> m_pProgressFgBrush;
     Microsoft::WRL::ComPtr<ID2D1SolidColorBrush> m_pSpectrumBrush;
@@ -129,15 +132,12 @@ private:
     D2D1_RECT_F m_rcSpectrum{};
 
     Microsoft::WRL::ComPtr<IDWriteTextLayout> m_pCurrentLyricLayout;
-    Microsoft::WRL::ComPtr<IDWriteTextLayout> m_pUpcomingLyricLayout;
     std::wstring m_currentLyricText;
-    std::wstring m_upcomingLyricText;
     std::wstring m_lyricTrackTitle;
     int m_visibleLyricIndex = -1;
     float m_lyricScrollX = 0.0f;
     float m_lyricScrollTargetX = 0.0f;
     float m_currentLyricWidth = 0.0f;
-    float m_upcomingLyricWidth = 0.0f;
 
     // Smooth Animation states
     float m_hoverProgress = 0.0f; // 0.0 (resting) -> 1.0 (hovered)
@@ -155,8 +155,8 @@ private:
     float m_baseBtnHoverAlpha = 0.18f;
     float m_baseTextPrimaryAlpha = 0.95f;
     float m_baseTextSecondaryAlpha = 0.85f;
-    float m_baseLyricAlpha = 0.95f;
     float m_baseBtnIconAlpha = 0.95f;
+    uint32_t m_lyricColor = 0; // 0xRRGGBB, zero follows the theme accent colour.
 
     HRESULT CreateDeviceIndependentResources();
     HRESULT CreateTextFormats(float dpiScale);

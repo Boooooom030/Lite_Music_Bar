@@ -210,7 +210,7 @@ if(BUILD_TESTING)
     )
     set_target_properties(SettingsUiTests PROPERTIES AUTOMOC ON)
     target_compile_definitions(SettingsUiTests PRIVATE MUSICBAR_TESTING)
-    target_link_libraries(SettingsUiTests PRIVATE Qt6::Widgets FluentQt::FluentQt advapi32)
+    target_link_libraries(SettingsUiTests PRIVATE Qt6::Widgets FluentQt::FluentQt advapi32 dwmapi)
     qt_import_plugins(SettingsUiTests INCLUDE
         Qt6::QWindowsIntegrationPlugin Qt6::QModernWindowsStylePlugin Qt6::QICOPlugin)
     qt_add_resources(SettingsUiTests "settings_test_resources" PREFIX "/" FILES assets/icon.ico)

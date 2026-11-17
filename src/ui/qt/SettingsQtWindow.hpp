@@ -9,9 +9,11 @@
 class QEvent;
 class QWidget;
 namespace fluent::collections { class ListView; }
+namespace fluent::dialogs_flyouts { class Flyout; }
 namespace fluent::navigation { class NavigationView; }
 namespace fluent::basicinput {
 class Button;
+class ColorPicker;
 class ComboBox;
 class ToggleSwitch;
 }
@@ -43,9 +45,11 @@ private:
     void SyncFromSettings(const AppSettings& settings);
     bool ReadControls(AppSettings& settings) const;
     void CommitFromControls();
+    void ResetLyricColor();
     void ReloadFromFile();
     void RestoreDefaults();
     void UpdateThemeFromSystem();
+    void ApplyCaptionTheme();
     void UpdateBackdrop();
     void UpdateWindowIcon();
     void UpdateNavigationIcons();
@@ -64,6 +68,10 @@ private:
     fluent::basicinput::ToggleSwitch* m_lockSwitch = nullptr;
     fluent::basicinput::ToggleSwitch* m_showLyricsSwitch = nullptr;
     fluent::basicinput::ComboBox* m_sourceCombo = nullptr;
+    fluent::basicinput::ColorPicker* m_lyricColorPicker = nullptr;
+    fluent::dialogs_flyouts::Flyout* m_lyricColorFlyout = nullptr;
+    fluent::basicinput::Button* m_lyricColorButton = nullptr;
+    fluent::basicinput::Button* m_lyricColorAutoButton = nullptr;
     fluent::basicinput::ComboBox* m_captureCombo = nullptr;
     fluent::basicinput::Button* m_reloadButton = nullptr;
     fluent::basicinput::Button* m_resetButton = nullptr;
@@ -72,5 +80,8 @@ private:
     AppSettings m_settings{};
     int m_appliedTheme = -1;
     bool m_placed = false;
+    // True once the user picks a colour; keeps "follow the theme" (0) as the
+    // stored value until then.
+    bool m_lyricColorEdited = false;
 };
 } // namespace MusicBar

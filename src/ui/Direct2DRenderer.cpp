@@ -1,7 +1,7 @@
 #include "Direct2DRenderer.hpp"
 #include "ImageLoader.hpp"
 #include "LyricScroll.hpp"
-#include "LyricTransition.hpp"
+#include "lyrics/LyricsTimeline.hpp"
 #include <d2d1_1helper.h>
 #include <algorithm>
 #include <cmath>
@@ -125,7 +125,6 @@ HRESULT Direct2DRenderer::CreateTextFormats(float dpiScale) {
     m_pLyricFormat = std::move(lyric);
     m_textDpiScale = dpiScale;
     m_pCurrentLyricLayout.Reset();
-    m_pUpcomingLyricLayout.Reset();
     m_currentLyricWidth = 0.0f;
     m_lyricScrollX = 0.0f;
     m_lyricScrollTargetX = 0.0f;
@@ -139,7 +138,6 @@ HRESULT Direct2DRenderer::UpdateTheme() {
 
     m_baseTextPrimaryAlpha = 0.95f;
     m_baseTextSecondaryAlpha = m_isLightTheme ? 0.88f : 0.85f;
-    m_baseLyricAlpha = 0.95f;
     m_baseBtnIconAlpha = 0.95f;
     m_baseBtnHoverAlpha = m_isLightTheme ? 0.10f : 0.13f;
     m_baseBgAlpha = m_isLightTheme ? 0.16f : 0.20f;
@@ -154,9 +152,11 @@ HRESULT Direct2DRenderer::UpdateTheme() {
         ? D2D1::ColorF(0.38f, 0.38f, 0.38f, m_baseTextSecondaryAlpha)
         : D2D1::ColorF(0.70f, 0.70f, 0.70f, m_baseTextSecondaryAlpha);
 
-    D2D1_COLOR_F colorLyric = m_isLightTheme
-        ? D2D1::ColorF(0.0f, 0.48f, 0.85f, m_baseLyricAlpha)
-        : D2D1::ColorF(0.24f, 0.88f, 0.60f, m_baseLyricAlpha);
+    D2D1_COLOR_F colorLyric = m_lyricColor != 0
+        ? D2D1::ColorF(m_lyricColor, 1.0f)
+        : (m_isLightTheme
+            ? D2D1::ColorF(0.0f, 0.48f, 0.85f, 1.0f)
+            : D2D1::ColorF(0.24f, 0.88f, 0.60f, 1.0f));
 
     D2D1_COLOR_F colorIcon = m_isLightTheme
         ? D2D1::ColorF(0.12f, 0.12f, 0.12f, m_baseBtnIconAlpha)
@@ -203,7 +203,7 @@ HRESULT Direct2DRenderer::UpdateTheme() {
     createBrush(D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.005f), pHitTestBrush);
     createBrush(colorTextPrimary, m_pTextPrimaryBrush);
     createBrush(colorTextSecondary, m_pTextSecondaryBrush);
-    createBrush(colorLyric, m_pLyricHighlightBrush);
+    createBrush(colorLyric, m_pLyricBrush);
     createBrush(colorProgressBg, m_pProgressBgBrush);
     createBrush(colorProgressFg, m_pProgressFgBrush);
     createBrush(colorSpectrum, m_pSpectrumBrush);
@@ -436,7 +436,7 @@ void Direct2DRenderer::DiscardDeviceResources() {
     pHitTestBrush.Reset();
     m_pTextPrimaryBrush.Reset();
     m_pTextSecondaryBrush.Reset();
-    m_pLyricHighlightBrush.Reset();
+    m_pLyricBrush.Reset();
     m_pProgressBgBrush.Reset();
     m_pProgressFgBrush.Reset();
     m_pSpectrumBrush.Reset();
@@ -476,6 +476,15 @@ HRESULT Direct2DRenderer::Resize(UINT width, UINT height) {
         DiscardDeviceResources();
     }
     return hr;
+}
+
+void Direct2DRenderer::SetLyricColor(uint32_t rgb) {
+    rgb &= 0xFFFFFFu;
+    if (rgb == m_lyricColor) return;
+    m_lyricColor = rgb;
+    // Rebuild the brush now when a device exists; otherwise the next
+    // UpdateTheme picks the colour up as part of resource creation.
+    if (m_pRenderTarget) UpdateTheme();
 }
 
 void Direct2DRenderer::UpdateAlbumArt(const std::vector<uint8_t>& imageBytes) {
@@ -989,14 +998,16 @@ HRESULT Direct2DRenderer::Render(
     if (textAlpha > 0.01f) {
         m_pTextPrimaryBrush->SetOpacity(m_baseTextPrimaryAlpha * textAlpha);
         m_pTextSecondaryBrush->SetOpacity(m_baseTextSecondaryAlpha * textAlpha);
-        m_pLyricHighlightBrush->SetOpacity(m_baseLyricAlpha * textAlpha);
 
         if (middleWidth > 30.0f * dpiScale) {
             const bool instrumentalNotice = !track.title.empty() && showLyrics && lyrics.isInstrumental;
+            const bool noLyricsNotice = !track.title.empty() && showLyrics && lyrics.noLyrics;
             const int nextLyricIndex = !track.title.empty() && showLyrics
                 ? LyricDisplayIndex(lyrics) : -1;
-            const std::wstring nextLyricText = instrumentalNotice ? L"纯音乐，请欣赏" : nextLyricIndex >= 0
-                ? lyrics.lines[nextLyricIndex].text : std::wstring{};
+            const std::wstring nextLyricText = instrumentalNotice ? L"纯音乐，请欣赏"
+                : noLyricsNotice ? L"无"
+                : nextLyricIndex >= 0 ? lyrics.lines[nextLyricIndex].text
+                : std::wstring{};
             if (track.title != m_lyricTrackTitle) {
                 m_lyricTrackTitle = track.title;
                 m_currentLyricText = nextLyricText;
@@ -1004,26 +1015,18 @@ HRESULT Direct2DRenderer::Render(
                 m_lyricScrollX = 0.0f;
                 m_lyricScrollTargetX = 0.0f;
                 m_pCurrentLyricLayout.Reset();
-                m_pUpcomingLyricLayout.Reset();
-                m_upcomingLyricText.clear();
             } else if (nextLyricIndex != m_visibleLyricIndex ||
                 nextLyricText != m_currentLyricText) {
+                // Lines swap at their own timestamp. No karaoke sweep: official
+                // LRC and translation timing is too coarse for a word-by-word
+                // fill, and a sweep that runs ahead of the voice reads as broken.
                 m_currentLyricText = nextLyricText;
                 m_visibleLyricIndex = nextLyricIndex;
                 m_lyricScrollX = 0.0f;
                 m_lyricScrollTargetX = 0.0f;
-                if (nextLyricText == m_upcomingLyricText && m_pUpcomingLyricLayout) {
-                    m_pCurrentLyricLayout = std::move(m_pUpcomingLyricLayout);
-                    m_currentLyricWidth = m_upcomingLyricWidth;
-                } else {
-                    m_pCurrentLyricLayout.Reset();
-                }
+                m_pCurrentLyricLayout.Reset();
             }
             const int64_t positionMs = track.GetCurrentInterpolatedPositionMs();
-            const auto transition = nextLyricIndex >= 0
-                ? ResolveLyricTransition(lyrics, positionMs) : LyricTransition{};
-            const float slide = transition.progress * transition.progress *
-                (3.0f - 2.0f * transition.progress);
             float lineH = (fBarHeight - 8.0f * dpiScale) * 0.5f;
             D2D1_RECT_F titleRect = D2D1::RectF(
                 middleLeft, 3.0f * dpiScale,
@@ -1068,101 +1071,84 @@ HRESULT Direct2DRenderer::Render(
             };
             if (!m_currentLyricText.empty() && !m_pCurrentLyricLayout)
                 createLayout(m_currentLyricText, m_pCurrentLyricLayout, m_currentLyricWidth);
-            if (transition.nextIndex >= 0) {
-                const auto& upcoming = lyrics.lines[transition.nextIndex].text;
-                if (m_upcomingLyricText != upcoming) {
-                    m_upcomingLyricText = upcoming;
-                    m_pUpcomingLyricLayout.Reset();
-                }
-                if (!m_pUpcomingLyricLayout)
-                    createLayout(upcoming, m_pUpcomingLyricLayout, m_upcomingLyricWidth);
-            } else {
-                m_pUpcomingLyricLayout.Reset();
-                m_upcomingLyricText.clear();
-            }
 
             m_pRenderTarget->PushAxisAlignedClip(detailRect,
                 D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
-            if (m_pCurrentLyricLayout && instrumentalNotice) {
-                const float drawX = middleLeft + std::max(0.0f, (middleWidth - m_currentLyricWidth) * 0.5f);
-                m_pTextSecondaryBrush->SetOpacity(m_baseTextSecondaryAlpha * textAlpha);
-                m_pRenderTarget->DrawTextLayout(D2D1::Point2F(drawX, detailRect.top),
-                    m_pCurrentLyricLayout.Get(), m_pTextSecondaryBrush.Get());
-            } else if (m_pCurrentLyricLayout && nextLyricIndex >= 0) {
-                const auto& line = lyrics.lines[nextLyricIndex];
-                const float lineProgress = line.durationMs > 0
-                    ? std::clamp(static_cast<float>(positionMs - line.startMs) /
-                        static_cast<float>(line.durationMs), 0.0f, 1.0f)
-                    : std::clamp(lyrics.syllableProgress, 0.0f, 1.0f);
-                // Standard LRC has line timing, so fill from left to right
-                // over that interval instead of painting the whole line blue.
-                float highlightX = m_currentLyricWidth * lineProgress;
-                float focusX = m_currentLyricWidth * lineProgress;
-                if (line.HasKaraoke()) {
-                    highlightX = 0.0f;
-                    if (lyrics.activeSyllableIndex >= 0) {
-                        const size_t activeSyllable = std::min<size_t>(
-                            static_cast<size_t>(lyrics.activeSyllableIndex),
-                            line.syllables.size() - 1);
-                        UINT32 charStart = 0;
-                        for (size_t i = 0; i < activeSyllable; ++i) {
-                            charStart += static_cast<UINT32>(line.syllables[i].text.size());
-                        }
-                        const UINT32 charEnd = charStart +
-                            static_cast<UINT32>(line.syllables[activeSyllable].text.size());
-                        FLOAT startX = 0.0f, endX = 0.0f, unusedY = 0.0f;
-                        DWRITE_HIT_TEST_METRICS metrics{};
-                        if (charEnd > charStart &&
-                            charEnd <= m_currentLyricText.size() &&
-                            SUCCEEDED(m_pCurrentLyricLayout->HitTestTextPosition(
-                                charStart, FALSE, &startX, &unusedY, &metrics)) &&
-                            SUCCEEDED(m_pCurrentLyricLayout->HitTestTextPosition(
-                                charEnd - 1, TRUE, &endX, &unusedY, &metrics))) {
-                            highlightX = startX + (endX - startX) *
-                                std::clamp(lyrics.syllableProgress, 0.0f, 1.0f);
+            if (m_pCurrentLyricLayout) {
+                const bool notice = instrumentalNotice || noLyricsNotice;
+                float drawX = middleLeft + (middleWidth - m_currentLyricWidth) * 0.5f;
+                // Negative means "no sweep": plain LRC lines only carry a line
+                // timestamp, which is too coarse to fill against, so they are
+                // painted whole and swapped at their own timestamp. KRC/YRC
+                // lines carry per-word timings, and those do drive a sweep.
+                float sweepX = -1.0f;
+                if (!notice && nextLyricIndex >= 0) {
+                    const auto& line = lyrics.lines[nextLyricIndex];
+                    const float lineProgress = line.durationMs > 0
+                        ? std::clamp(static_cast<float>(positionMs - line.startMs) /
+                            static_cast<float>(line.durationMs), 0.0f, 1.0f)
+                        : std::clamp(lyrics.syllableProgress, 0.0f, 1.0f);
+                    if (m_currentLyricWidth > middleWidth) {
+                        const float targetScroll = LyricScrollTarget(m_currentLyricWidth,
+                            middleWidth, m_currentLyricWidth * lineProgress, lineProgress);
+                        m_lyricScrollTargetX = targetScroll;
+                        m_lyricScrollX += (targetScroll - m_lyricScrollX) *
+                            std::clamp(dt / 0.12f, 0.0f, 1.0f);
+                        drawX = middleLeft - m_lyricScrollX;
+                    }
+                    if (line.HasKaraoke()) {
+                        sweepX = 0.0f;
+                        if (lyrics.activeSyllableIndex >= 0) {
+                            const size_t activeSyllable = std::min<size_t>(
+                                static_cast<size_t>(lyrics.activeSyllableIndex),
+                                line.syllables.size() - 1);
+                            UINT32 charStart = 0;
+                            for (size_t i = 0; i < activeSyllable; ++i) {
+                                charStart += static_cast<UINT32>(line.syllables[i].text.size());
+                            }
+                            const UINT32 charEnd = charStart +
+                                static_cast<UINT32>(line.syllables[activeSyllable].text.size());
+                            FLOAT startX = 0.0f, endX = 0.0f, unusedY = 0.0f;
+                            DWRITE_HIT_TEST_METRICS metrics{};
+                            if (charEnd > charStart &&
+                                charEnd <= m_currentLyricText.size() &&
+                                SUCCEEDED(m_pCurrentLyricLayout->HitTestTextPosition(
+                                    charStart, FALSE, &startX, &unusedY, &metrics)) &&
+                                SUCCEEDED(m_pCurrentLyricLayout->HitTestTextPosition(
+                                    charEnd - 1, TRUE, &endX, &unusedY, &metrics))) {
+                                sweepX = startX + (endX - startX) *
+                                    std::clamp(lyrics.syllableProgress, 0.0f, 1.0f);
+                            }
                         }
                     }
-                    focusX = highlightX;
                 }
-                const float maxScroll = std::max(0.0f,
-                    m_currentLyricWidth - middleWidth);
-                const float targetScroll = LyricScrollTarget(
-                    m_currentLyricWidth, middleWidth, focusX, lineProgress);
-                m_lyricScrollTargetX = targetScroll;
-                m_lyricScrollX += (targetScroll - m_lyricScrollX) *
-                    std::clamp(dt / 0.12f, 0.0f, 1.0f);
-                const float drawX = maxScroll > 0.0f
-                    ? middleLeft - m_lyricScrollX
-                    : middleLeft + (middleWidth - m_currentLyricWidth) * 0.5f;
-                const float drawY = detailRect.top - slide * lineH;
-                const D2D1_POINT_2F origin = D2D1::Point2F(drawX, drawY);
-                m_pTextSecondaryBrush->SetOpacity(m_baseTextSecondaryAlpha *
-                    textAlpha * (1.0f - slide));
-                m_pRenderTarget->DrawTextLayout(origin, m_pCurrentLyricLayout.Get(),
-                    m_pTextSecondaryBrush.Get());
-                const float filledRight = std::min(detailRect.right,
-                    drawX + highlightX);
-                if (filledRight > detailRect.left) {
-                    m_pRenderTarget->PushAxisAlignedClip(
-                        D2D1::RectF(detailRect.left, detailRect.top,
-                            filledRight, detailRect.bottom),
-                        D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
-                    m_pLyricHighlightBrush->SetOpacity(m_baseLyricAlpha *
-                        textAlpha * (1.0f - slide));
+                const D2D1_POINT_2F origin = D2D1::Point2F(drawX, detailRect.top);
+                if (notice) {
+                    m_pTextSecondaryBrush->SetOpacity(m_baseTextSecondaryAlpha * textAlpha);
                     m_pRenderTarget->DrawTextLayout(origin,
-                        m_pCurrentLyricLayout.Get(), m_pLyricHighlightBrush.Get());
-                    m_pRenderTarget->PopAxisAlignedClip();
+                        m_pCurrentLyricLayout.Get(), m_pTextSecondaryBrush.Get());
+                } else if (sweepX >= 0.0f) {
+                    // Unsung part first, then the sung part clipped to the
+                    // current word in the lyric colour.
+                    m_pTextSecondaryBrush->SetOpacity(m_baseTextSecondaryAlpha * textAlpha);
+                    m_pRenderTarget->DrawTextLayout(origin,
+                        m_pCurrentLyricLayout.Get(), m_pTextSecondaryBrush.Get());
+                    const float filledRight = std::min(detailRect.right, drawX + sweepX);
+                    if (filledRight > detailRect.left) {
+                        m_pRenderTarget->PushAxisAlignedClip(
+                            D2D1::RectF(detailRect.left, detailRect.top,
+                                filledRight, detailRect.bottom),
+                            D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
+                        m_pLyricBrush->SetOpacity(textAlpha);
+                        m_pRenderTarget->DrawTextLayout(origin,
+                            m_pCurrentLyricLayout.Get(), m_pLyricBrush.Get());
+                        m_pRenderTarget->PopAxisAlignedClip();
+                    }
+                } else {
+                    m_pLyricBrush->SetOpacity(textAlpha);
+                    m_pRenderTarget->DrawTextLayout(origin,
+                        m_pCurrentLyricLayout.Get(), m_pLyricBrush.Get());
                 }
-            }
-            if (transition.nextIndex >= 0 && m_pUpcomingLyricLayout && slide > 0.0f) {
-                const float drawX = m_upcomingLyricWidth > middleWidth
-                    ? middleLeft : middleLeft + (middleWidth - m_upcomingLyricWidth) * 0.5f;
-                const auto origin = D2D1::Point2F(drawX, detailRect.top + (1.0f - slide) * lineH);
-                // Preview is unfilled. Its karaoke clock starts only when the
-                // timeline selects it at the actual timestamp.
-                m_pTextSecondaryBrush->SetOpacity(m_baseTextSecondaryAlpha * textAlpha * slide);
-                m_pRenderTarget->DrawTextLayout(origin, m_pUpcomingLyricLayout.Get(),
-                    m_pTextSecondaryBrush.Get());
             }
             m_pRenderTarget->PopAxisAlignedClip();
         }

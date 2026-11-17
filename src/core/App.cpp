@@ -50,6 +50,7 @@ AppSettings App::CurrentSettings() const {
     settings.lyricsSource = static_cast<LyricsSource>(m_currentLyricsSource);
     settings.fftCaptureMode = m_audio.GetCaptureMode() == AudioCaptureMode::SystemMix
         ? SpectrumCaptureMode::System : SpectrumCaptureMode::Player;
+    settings.lyricColor = m_renderer.LyricColor();
     return settings;
 }
 
@@ -67,6 +68,7 @@ void App::ApplySettings(const AppSettings& settings) {
     m_showLyrics = settings.showLyrics;
     m_currentLyricsSource = static_cast<int>(settings.lyricsSource);
     m_positionLocked = settings.positionLocked;
+    m_renderer.SetLyricColor(settings.lyricColor);
     if (m_positionLocked && m_isDragging) {
         m_pressTarget = PressTarget::None;
         m_isDragging = false;

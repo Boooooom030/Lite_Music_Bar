@@ -41,6 +41,11 @@ namespace {
 void Require(bool condition, const char* message) {
     if (!condition) throw std::runtime_error(message);
 }
+int VisibleInk(const std::vector<uint32_t>& pixels) {
+    return static_cast<int>(std::count_if(pixels.begin(), pixels.end(), [](uint32_t pixel) {
+        return (pixel >> 24) > 30;
+    }));
+}
 int ColoredInk(const std::vector<uint32_t>& pixels) {
     return static_cast<int>(std::count_if(pixels.begin(), pixels.end(), [](uint32_t pixel) {
         const int r = (pixel >> 16) & 255;
@@ -49,26 +54,9 @@ int ColoredInk(const std::vector<uint32_t>& pixels) {
         return (pixel >> 24) > 30 && std::max({r, g, b}) - std::min({r, g, b}) > 20;
     }));
 }
-int VisibleInk(const std::vector<uint32_t>& pixels) {
-    return static_cast<int>(std::count_if(pixels.begin(), pixels.end(), [](uint32_t pixel) {
-        return (pixel >> 24) > 30;
-    }));
-}
-float ColoredCenterY(const std::vector<uint32_t>& pixels) {
-    const size_t width = pixels.size() / 19; // readback covers rows 24 through 42
-    float weightedY = 0.0f;
-    int count = 0;
-    for (size_t index = 0; index < pixels.size(); ++index) {
-        const uint32_t pixel = pixels[index];
-        const int r = (pixel >> 16) & 255, g = (pixel >> 8) & 255, b = pixel & 255;
-        if ((pixel >> 24) > 30 && std::max({r, g, b}) - std::min({r, g, b}) > 20) {
-            weightedY += static_cast<float>(index / width);
-            ++count;
-        }
-    }
-    return count > 0 ? weightedY / static_cast<float>(count) : -1.0f;
-}
 void CheckLyricRendering(MusicBar::Direct2DRenderer& renderer) {
+    // A saturated lyric colour keeps the sung/unsung split measurable.
+    renderer.SetLyricColor(0x2F9BFF);
     MusicBar::MediaTrackInfo track{};
     track.title = L"Lyric pixel regression";
     track.durationMs = 60000;
@@ -86,49 +74,43 @@ void CheckLyricRendering(MusicBar::Direct2DRenderer& renderer) {
         return MusicBar::RendererTestAccess::LyricPixels(renderer);
     };
     const auto intro = draw(0);
-    Require(VisibleInk(intro) > 40 && ColoredInk(intro) == 0 && draw(4999) == intro,
-        "First lyric was hidden or highlighted during the intro");
-    const auto start = draw(5000);
-    Require(start == intro, "First lyric jumped or restarted at its singing timestamp");
-    const auto quarter = draw(6000);
-    const auto halfway = draw(7000);
-    const auto complete = draw(9000);
-    Require(VisibleInk(start) > 40 && ColoredInk(start) == 0,
-        "LRC was fully highlighted or invisible at its start");
-    Require(ColoredInk(quarter) > 0 && ColoredInk(halfway) > ColoredInk(quarter) &&
-        ColoredInk(complete) > ColoredInk(halfway), "LRC highlight did not advance with playback");
-    Require(draw(29000) == complete && draw(29820) == complete,
-        "Interlude lost the completed lyric before the transition window");
-    const auto transitionHalf = draw(29910);
-    Require(transitionHalf != complete && VisibleInk(transitionHalf) > 10,
-        "Outgoing lyric did not slide/fade during the transition");
-    Require(ColoredInk(transitionHalf) > 0 && ColoredInk(transitionHalf) < ColoredInk(complete) &&
-        ColoredCenterY(transitionHalf) + 2.0f < ColoredCenterY(complete),
-        "Outgoing lyric did not visibly move upwards while fading");
-    Require(draw(29910) == transitionHalf, "Paused playback did not freeze the transition");
-    const auto nextFirstFrame = draw(30000);
-    Require(VisibleInk(nextFirstFrame) > 40 && ColoredInk(nextFirstFrame) == 0,
-        "Next line was invisible or inherited the completed highlight");
-    Sleep(450);
-    Require(draw(30000) == nextFirstFrame, "Next line still animated after its timestamp");
-    Require(draw(5000) == start, "Seeking backwards did not reset the highlight");
-    Require(draw(1000) == intro, "Seeking into the intro retained the old completed lyric");
+    Require(VisibleInk(intro) > 40, "First lyric was hidden during the intro");
+    Require(draw(4999) == intro, "The intro line changed before its successor started");
+    const auto first = draw(5000);
+    Require(first == intro, "First lyric jumped or restarted at its singing timestamp");
+    // Nothing paints inside the line any more: the frame stays byte-identical
+    // until the next line's own timestamp.
+    Require(draw(7000) == first, "The lyric still fills in while the line plays");
+    Require(draw(29000) == first, "Interlude lost the line before the next one started");
+    const auto nextLine = draw(30000);
+    Require(nextLine != first && VisibleInk(nextLine) > 40,
+        "The next line did not replace the previous one at its timestamp");
+    Require(draw(29910) == first, "A seek back inside the interlude kept the wrong line");
+    Require(draw(5000) == first, "Seeking backwards did not restore the earlier line");
+    Require(draw(1000) == intro, "Seeking into the intro retained the old line");
 
+    // Word-level timings drive a sweep; plain LRC line timings do not.
     lyrics.lines = {{10000, 2500, L"MMMM MMMM", L"",
         {{10500, 1000, L"MMMM "}, {11500, 1000, L"MMMM"}}}};
-    const auto karaokeIntro = draw(0);
-    Require(VisibleInk(karaokeIntro) > 40 && ColoredInk(karaokeIntro) == 0 &&
-        draw(10000) == karaokeIntro, "Karaoke intro preview was hidden or advanced early");
-    Require(ColoredInk(draw(10000)) == 0, "Karaoke highlighted before the first syllable");
-    const int partialWord = ColoredInk(draw(11000));
-    Require(partialWord > 0 && ColoredInk(draw(12500)) > partialWord,
-        "Karaoke word timing regressed");
+    const auto karaokeIntro = draw(10000);
+    Require(VisibleInk(karaokeIntro) > 40 && ColoredInk(karaokeIntro) == 0,
+        "Karaoke line painted before its first word started");
+    const int karaokeFirst = ColoredInk(draw(10750));
+    const int karaokeSecond = ColoredInk(draw(11250));
+    const int karaokeThird = ColoredInk(draw(12000));
+    Require(karaokeFirst > 0 && karaokeSecond > karaokeFirst && karaokeThird > karaokeSecond,
+        "Karaoke sweep did not follow the word timings");
 
+    lyrics = {};
+    lyrics.noLyrics = true;
+    const auto noLyrics = draw(0);
+    Require(VisibleInk(noLyrics) > 5, "A confirmed no-lyrics state was not shown");
+    Require(draw(50000) == noLyrics, "The no-lyrics notice changed during playback");
     lyrics = {};
     lyrics.isInstrumental = true;
     const auto instrumental = draw(0);
-    Require(VisibleInk(instrumental) > 40 && ColoredInk(instrumental) == 0,
-        "Confirmed instrumental did not show a neutral notice");
+    Require(VisibleInk(instrumental) > 5 && instrumental != noLyrics,
+        "The instrumental notice was missing or indistinguishable from a missing lyric");
     Require(draw(50000) == instrumental, "Instrumental notice scrolled or became karaoke");
     MusicBar::RendererTestAccess::UseReadableLayer(renderer);
     Require(SUCCEEDED(renderer.Render({}, RECT{0, 0, 600, 48}, 1.0f, track, lyrics, {},
@@ -137,8 +119,8 @@ void CheckLyricRendering(MusicBar::Direct2DRenderer& renderer) {
         "Show lyrics setting did not hide the instrumental notice");
     lyrics = {};
     Require(VisibleInk(draw(5000)) == 0, "Missing lyrics were mislabeled as instrumental");
-    std::cout << "Lyric pixels: progressive LRC, interlude hold, timed slide/fade, paused transition, "
-        "on-time next line, seek, karaoke and instrumental notice passed.\n";
+    std::cout << "Lyric pixels: on-timestamp line switching, interlude hold, seek, "
+        "ignored syllable timing, no-lyrics and instrumental notices passed.\n";
 }
 } // namespace
 

@@ -1,6 +1,7 @@
 #include "SettingsStore.hpp"
 
 #include <windows.h>
+#include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -31,6 +32,39 @@ bool ParseSource(const std::string& value, LyricsSource& source) {
     else if (value == "lrclib") source = LyricsSource::Lrclib;
     else return false;
     return true;
+}
+
+int HexDigit(char ch) {
+    if (ch >= '0' && ch <= '9') return ch - '0';
+    if (ch >= 'a' && ch <= 'f') return ch - 'a' + 10;
+    if (ch >= 'A' && ch <= 'F') return ch - 'A' + 10;
+    return -1;
+}
+
+// "#RRGGBB" or bare "RRGGBB"; "auto" means follow the theme accent.
+bool ParseColor(const std::string& text, uint32_t& color) {
+    if (text == "auto") {
+        color = 0;
+        return true;
+    }
+    std::string digits = text;
+    if (!digits.empty() && digits.front() == '#') digits.erase(digits.begin());
+    if (digits.size() != 6) return false;
+    uint32_t value = 0;
+    for (const char ch : digits) {
+        const int digit = HexDigit(ch);
+        if (digit < 0) return false;
+        value = (value << 4) | static_cast<uint32_t>(digit);
+    }
+    color = value;
+    return true;
+}
+
+std::string ColorName(uint32_t color) {
+    if (color == 0) return "auto";
+    char text[8]{};
+    std::snprintf(text, sizeof(text), "#%06X", color & 0xFFFFFFu);
+    return text;
 }
 
 } // namespace
@@ -110,6 +144,12 @@ bool SettingsStore::TryParse(std::string_view jsonText, AppSettings& settings) {
             else if (mode == "system") parsed.fftCaptureMode = SpectrumCaptureMode::System;
             else return false;
         }
+        if (document.contains("lyricColor")) {
+            if (!document["lyricColor"].is_string() ||
+                !ParseColor(document["lyricColor"].get<std::string>(), parsed.lyricColor)) {
+                return false;
+            }
+        }
         settings = parsed;
         return true;
     } catch (const nlohmann::json::exception&) {
@@ -124,7 +164,8 @@ std::string SettingsStore::Serialize(const AppSettings& settings) {
         {"positionLocked", settings.positionLocked},
         {"lyricsSource", SourceName(settings.lyricsSource)},
         {"fftCaptureMode", settings.fftCaptureMode == SpectrumCaptureMode::System
-            ? "system" : "player"}
+            ? "system" : "player"},
+        {"lyricColor", ColorName(settings.lyricColor)}
     };
     return document.dump(2) + "\n";
 }

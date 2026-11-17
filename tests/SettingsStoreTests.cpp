@@ -16,12 +16,31 @@ int main() {
         settings.fftCaptureMode != SpectrumCaptureMode::System) return 2;
 
     AppSettings roundTrip{};
+    settings.lyricColor = 0x1A2B3C;
     if (!SettingsStore::TryParse(SettingsStore::Serialize(settings), roundTrip))
         return 3;
     if (roundTrip.showLyrics != settings.showLyrics ||
         roundTrip.positionLocked != settings.positionLocked ||
         roundTrip.lyricsSource != settings.lyricsSource ||
-        roundTrip.fftCaptureMode != settings.fftCaptureMode) return 4;
+        roundTrip.fftCaptureMode != settings.fftCaptureMode ||
+        roundTrip.lyricColor != settings.lyricColor) return 4;
+
+    // A custom lyric colour round-trips as #RRGGBB; "auto" keeps the theme
+    // accent and invalid values are rejected instead of silently defaulting.
+    AppSettings colored{};
+    if (!SettingsStore::TryParse(R"({"version":1,"lyricColor":"#3de099"})", colored))
+        return 27;
+    if (colored.lyricColor != 0x3DE099) return 28;
+    if (!SettingsStore::TryParse(R"({"version":1,"lyricColor":"3DE099"})", colored))
+        return 29;
+    if (colored.lyricColor != 0x3DE099) return 30;
+    if (!SettingsStore::TryParse(R"({"version":1,"lyricColor":"auto"})", colored))
+        return 31;
+    if (colored.lyricColor != 0) return 32;
+    if (SettingsStore::TryParse(R"({"version":1,"lyricColor":"#12345"})", colored))
+        return 33;
+    if (SettingsStore::TryParse(R"({"version":1,"lyricColor":305419896})", colored))
+        return 34;
 
     if (SettingsStore::TryParse(R"({"version":2})", roundTrip)) return 5;
     if (SettingsStore::TryParse(

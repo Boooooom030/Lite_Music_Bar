@@ -186,19 +186,42 @@ void LyricsService::FetchWorker(
         if (m_queryGeneration != gen) return;
     }
 
-    if (result && (!result->lines.empty() || result->isInstrumental)) {
-        // Cache under the requested source and under the provider that actually
-        // produced the document, so switching to that source serves the same
-        // file instead of refetching the whole chain.
-        const LyricsSource producerSource = producerIndex >= 0
-            ? static_cast<LyricsSource>(producerIndex + 1) : source;
-        auto storeInCache = [this](const std::wstring& key, const LyricDocument& document) {
-            std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
-            if (m_cache.size() >= 50 && !m_cache.contains(key)) {
-                m_cache.erase(m_cache.begin());
-            }
-            m_cache[key] = document;
-        };
+    // Cache under the requested source and under the provider that actually
+    // produced the document, so switching to that source serves the same file
+    // instead of refetching the whole chain.
+    const LyricsSource producerSource = producerIndex >= 0
+        ? static_cast<LyricsSource>(producerIndex + 1) : source;
+    auto storeInCache = [this](const std::wstring& key, const LyricDocument& document) {
+        std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
+        if (m_cache.size() >= 50 && !m_cache.contains(key)) {
+            m_cache.erase(m_cache.begin());
+        }
+        m_cache[key] = document;
+    };
+
+    if (!result) {
+        // Every provider was asked and none had a lyric for this track.
+        // Publishing the empty state tells the bar to show that instead of
+        // leaving the row blank, and keeps repeat requests off the network.
+        LyricDocument unavailable{};
+        unavailable.title = title;
+        unavailable.artist = artist;
+        unavailable.noLyrics = true;
+        storeInCache(CacheKey(title, artist, source), unavailable);
+
+        LyricDocument published;
+        {
+            std::lock_guard<std::mutex> docLock(m_docMutex);
+            if (m_queryGeneration != gen) return;
+            m_currentDoc = std::move(unavailable);
+            published = m_currentDoc;
+        }
+
+        if (m_callback) m_callback(published);
+        return;
+    }
+
+    if (!result->lines.empty() || result->isInstrumental) {
         storeInCache(CacheKey(title, artist, source), *result);
         if (producerSource != source) {
             storeInCache(CacheKey(title, artist, producerSource), *result);
