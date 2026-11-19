@@ -286,6 +286,65 @@ std::wstring ThumbnailUrl(std::wstring url) {
     return url;
 }
 
+// Cover URLs of the tracks that follow the playing one in the playlist (or in
+// 私人 FM's queue), used to warm the artwork cache before the switch happens.
+std::vector<std::wstring> NeighbourCovers(const std::string& identity, size_t limit) {
+    std::vector<std::wstring> covers;
+    if (limit == 0) return covers;
+    const auto appData = LocalAppData();
+    if (appData.empty()) return covers;
+    const auto directory = appData + L"\\NetEase\\CloudMusic\\WebData\\file\\";
+
+    auto append = [&](const nlohmann::json& track) {
+        if (covers.size() >= limit || !track.is_object()) return;
+        const auto album = track.find("album");
+        if (album == track.end() || !album->is_object()) return;
+        std::string cover = JsonString(*album, "cover");
+        if (cover.empty()) cover = JsonString(*album, "picUrl");
+        if (cover.empty()) return;
+        std::wstring url = Utf8ToWide(cover);
+        if (url.starts_with(L"http://")) url.replace(0, 7, L"https://");
+        if (!url.starts_with(L"https://")) return;
+        // Cache the raw album URL: the fetch lambda applies the thumbnail
+        // suffix itself, and the current track looks its cover up by this exact
+        // raw URL, so a suffixed key here would never be found again.
+        covers.push_back(std::move(url));
+    };
+
+    const auto playlist = ReadJsonFile(directory + L"playingList");
+    if (playlist.is_object() && playlist.contains("list") &&
+        playlist["list"].is_array()) {
+        bool after = false;
+        for (const auto& item : playlist["list"]) {
+            if (!item.is_object()) continue;
+            if (JsonId(item) == identity) {
+                after = true;
+                continue;
+            }
+            if (!after) continue;
+            if (item.contains("track")) append(item["track"]);
+            if (covers.size() >= limit) return covers;
+        }
+    }
+    if (covers.size() >= limit) return covers;
+
+    const auto fm = ReadJsonFile(directory + L"fmPlay");
+    if (fm.is_object() && fm.contains("queue") && fm["queue"].is_array()) {
+        bool after = false;
+        for (const auto& item : fm["queue"]) {
+            if (!item.is_object()) continue;
+            if (JsonId(item) == identity) {
+                after = true;
+                continue;
+            }
+            if (!after) continue;
+            append(item);
+            if (covers.size() >= limit) break;
+        }
+    }
+    return covers;
+}
+
 bool LooksLikeImage(const std::vector<uint8_t>& bytes) {
     return (bytes.size() >= 3 && bytes[0] == 0xff &&
             bytes[1] == 0xd8 && bytes[2] == 0xff) ||
@@ -376,17 +435,42 @@ void NetEaseMediaSource::CollectCovers() {
                 m_track.thumbnailBytes = bytes;
             }
             if (bytes.size() <= 1024 * 1024) {
+                // Keep the bytes on the metadata cache entries too, so a track
+                // restored from that cache does not depend on the artwork
+                // cache still holding the same URL.
+                for (auto& cached : m_trackCache) {
+                    if (cached.coverUrl == request->url) {
+                        cached.track.thumbnailBytes = bytes;
+                    }
+                }
                 const auto cached = std::find_if(m_coverCache.begin(),
                     m_coverCache.end(), [&](const auto& item) {
                         return item.first == request->url;
                     });
                 if (cached != m_coverCache.end()) m_coverCache.erase(cached);
                 m_coverCache.emplace_front(request->url, std::move(bytes));
-                if (m_coverCache.size() > 8) m_coverCache.pop_back();
+                if (m_coverCache.size() > 24) m_coverCache.pop_back();
             }
         }
         request = m_coverRequests.erase(request);
     }
+}
+
+void NetEaseMediaSource::StartCoverRequest(const std::wstring& url) {
+    const auto pending = std::any_of(m_coverRequests.begin(),
+        m_coverRequests.end(), [&](const CoverRequest& request) {
+            return request.url == url;
+        });
+    if (pending) return;
+    try {
+        m_coverRequests.push_back({url, std::async(std::launch::async,
+            [url] {
+                auto image = HttpClient{2500}.Get(ThumbnailUrl(url));
+                if (!image.success || image.rawBytes.size() > 1024 * 1024 ||
+                    !LooksLikeImage(image.rawBytes)) return std::vector<uint8_t>{};
+                return std::move(image.rawBytes);
+            })});
+    } catch (...) {}
 }
 
 void NetEaseMediaSource::StartCoverIfNeeded(Clock::time_point now) {
@@ -402,16 +486,33 @@ void NetEaseMediaSource::StartCoverIfNeeded(Clock::time_point now) {
     const unsigned index = std::min(m_coverAttempts, 3u);
     m_coverAttempts = std::min(m_coverAttempts + 1, 4u);
     m_nextCoverAttempt = now + std::chrono::seconds(RetrySeconds[index]);
-    const auto url = m_coverUrl;
-    try {
-        m_coverRequests.push_back({url, std::async(std::launch::async,
-            [url] {
-                auto image = HttpClient{2500}.Get(ThumbnailUrl(url));
-                if (!image.success || image.rawBytes.size() > 1024 * 1024 ||
-                    !LooksLikeImage(image.rawBytes)) return std::vector<uint8_t>{};
-                return std::move(image.rawBytes);
-            })});
-    } catch (...) {}
+    StartCoverRequest(m_coverUrl);
+}
+
+void NetEaseMediaSource::QueuePrefetchCovers(const std::vector<std::wstring>& urls) {
+    for (const auto& url : urls) {
+        if (url.empty() || m_prefetchQueue.size() >= 12) continue;
+        const auto cached = std::any_of(m_coverCache.begin(), m_coverCache.end(),
+            [&](const auto& item) { return item.first == url; });
+        if (cached) continue;
+        const auto queued = std::any_of(m_prefetchQueue.begin(), m_prefetchQueue.end(),
+            [&](const std::wstring& queuedUrl) { return queuedUrl == url; });
+        if (!queued) m_prefetchQueue.push_back(url);
+    }
+}
+
+void NetEaseMediaSource::StartPrefetch() {
+    // Sequential playback is the common case, and the playlist file already
+    // says what plays next: warming those covers is what removes the empty
+    // square on a track change.
+    while (!m_prefetchQueue.empty() && m_coverRequests.size() < 3) {
+        const auto url = m_prefetchQueue.front();
+        m_prefetchQueue.pop_front();
+        const auto cached = std::any_of(m_coverCache.begin(), m_coverCache.end(),
+            [&](const auto& item) { return item.first == url; });
+        if (cached) continue;
+        StartCoverRequest(url);
+    }
 }
 
 std::optional<MediaTrackInfo> NetEaseMediaSource::Read() {
@@ -453,6 +554,9 @@ std::optional<MediaTrackInfo> NetEaseMediaSource::Read() {
         m_coverAttempts = 0;
         m_nextCoverAttempt = {};
         m_nextMetadataAttempt = {};
+        // Warm the covers that the playlist file says come next, so the next
+        // track change is not the first time those URLs are fetched.
+        QueuePrefetchCovers(NeighbourCovers(m_identity, 8));
     }
     if (m_track.title.empty()) {
         const auto cachedTrack = std::find_if(m_trackCache.begin(),
@@ -498,6 +602,7 @@ std::optional<MediaTrackInfo> NetEaseMediaSource::Read() {
     m_track.sourceProcessId = m_processId;
     m_track.lastUpdatedTime = now;
     StartCoverIfNeeded(now);
+    StartPrefetch();
     return m_track;
 }
 

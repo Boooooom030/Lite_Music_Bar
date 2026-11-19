@@ -1,4 +1,5 @@
 #include "lyrics/LyricsService.hpp"
+#include "lyrics/LyricsSourceSelector.hpp"
 #include <atomic>
 #include <chrono>
 #include <iostream>
@@ -130,6 +131,18 @@ int main() {
 
         std::cout << "Lyrics service: instrumental publication, fallback stopping, caching, "
                      "normal fallback and the no-lyrics state passed.\n";
+
+        // A browser tab or video title must never reach the provider chain.
+        Require(!MusicBar::LyricsLookupAllowed(L"MSEdge", L""),
+            "A video session without an artist was accepted for lyric lookup");
+        Require(!MusicBar::LyricsLookupAllowed(L"MSEdge", L"Some Channel"),
+            "A browser session was accepted for lyric lookup");
+        Require(!MusicBar::LyricsLookupAllowed(L"PotPlayerMini64.exe", L"Artist"),
+            "A video player was accepted for lyric lookup");
+        Require(MusicBar::LyricsLookupAllowed(L"cloudmusic.exe", L"Jux"),
+            "NetEase playback was rejected for lyric lookup");
+        Require(MusicBar::LyricsLookupAllowed(L"QQMusic.exe", L"Singer"),
+            "QQ Music playback was rejected for lyric lookup");
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';
         return 1;

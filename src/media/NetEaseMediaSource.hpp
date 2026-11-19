@@ -2,12 +2,14 @@
 
 #include "core/Types.hpp"
 #include <windows.h>
+#include <algorithm>
 #include <chrono>
 #include <deque>
 #include <future>
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -18,6 +20,17 @@ namespace MusicBar {
 class NetEaseMediaSource {
 public:
     std::optional<MediaTrackInfo> Read();
+
+    // Diagnostics for the artwork cache: how many covers are cached and how
+    // many warm-up requests are still queued or in flight.
+    size_t CachedCoverCount() const { return m_coverCache.size(); }
+    size_t PendingCoverWork() const {
+        return m_coverRequests.size() + m_prefetchQueue.size();
+    }
+    bool HasCachedCover(std::wstring_view url) const {
+        return std::any_of(m_coverCache.begin(), m_coverCache.end(),
+            [&](const auto& item) { return item.first == url; });
+    }
 
 private:
     struct HandleCloser {
@@ -39,6 +52,9 @@ private:
     bool Attach(DWORD pid);
     void CollectCovers();
     void StartCoverIfNeeded(std::chrono::steady_clock::time_point now);
+    void StartCoverRequest(const std::wstring& url);
+    void QueuePrefetchCovers(const std::vector<std::wstring>& urls);
+    void StartPrefetch();
 
     std::unique_ptr<void, HandleCloser> m_process;
     DWORD m_processId = 0;
@@ -53,6 +69,7 @@ private:
 
     std::vector<CoverRequest> m_coverRequests;
     std::deque<std::pair<std::wstring, std::vector<uint8_t>>> m_coverCache;
+    std::deque<std::wstring> m_prefetchQueue;
     unsigned m_coverAttempts = 0;
     std::chrono::steady_clock::time_point m_nextCoverAttempt{};
 };

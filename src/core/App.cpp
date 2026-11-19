@@ -487,12 +487,19 @@ LRESULT App::HandleMessage(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             m_currentTrack.sourceAppId != prevSource ||
             src != m_lastRequestedLyricsSource) {
             m_lastRequestedLyricsSource = src;
-            m_lyrics.RequestLyrics(
-                m_currentTrack.title,
-                m_currentTrack.artist,
-                m_currentTrack.durationMs,
-                src
-            );
+            if (LyricsLookupAllowed(m_currentTrack.sourceAppId, m_currentTrack.artist)) {
+                m_lyrics.RequestLyrics(
+                    m_currentTrack.title,
+                    m_currentTrack.artist,
+                    m_currentTrack.durationMs,
+                    src
+                );
+            } else {
+                // A browser tab or a video player: its "title" is a page or
+                // video name, and searching the providers for it matches an
+                // unrelated song. Leave the lyric row empty instead.
+                m_lyrics.Clear();
+            }
             m_currentLyrics = m_lyrics.GetCurrentLyrics();
         }
 

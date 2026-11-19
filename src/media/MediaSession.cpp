@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <deque>
 #include <optional>
 #include <thread>
 #include <vector>
@@ -123,6 +124,39 @@ struct MediaSession::Impl : std::enable_shared_from_this<Impl> {
     DWORD resolvedProcessId = 0;
     Clock::time_point nextProcessResolve{};
 
+    // Artwork for players that only publish it through SMTC (QQ 音乐, 汽水,
+    // 酷狗, browsers, ...) is read from the player's stream, so it is kept by
+    // track: revisiting a song must not pay for the read again. While the
+    // player has not published the new sleeve yet, the previous one stays on
+    // screen instead of flashing an empty square.
+    std::deque<std::pair<std::wstring, std::vector<uint8_t>>> artworkCache;
+    std::wstring pendingArtworkTitle;
+    Clock::time_point pendingArtworkDeadline{};
+
+    static std::wstring ArtworkKey(const std::wstring& source,
+        const std::wstring& title, const std::wstring& artist) {
+        return source + L'\x1f' + title + L'\x1f' + artist;
+    }
+
+    std::vector<uint8_t> CachedArtwork(const std::wstring& key) {
+        const auto cached = std::find_if(artworkCache.begin(), artworkCache.end(),
+            [&](const auto& entry) { return entry.first == key; });
+        if (cached == artworkCache.end()) return {};
+        auto entry = std::move(*cached);
+        artworkCache.erase(cached);
+        artworkCache.push_front(std::move(entry));
+        return artworkCache.front().second;
+    }
+
+    void StoreArtwork(const std::wstring& key, const std::vector<uint8_t>& bytes) {
+        if (bytes.empty() || bytes.size() > 1024 * 1024) return;
+        const auto cached = std::find_if(artworkCache.begin(), artworkCache.end(),
+            [&](const auto& entry) { return entry.first == key; });
+        if (cached != artworkCache.end()) artworkCache.erase(cached);
+        artworkCache.emplace_front(key, bytes);
+        if (artworkCache.size() > 24) artworkCache.pop_back();
+    }
+
     DWORD ResolveProcess(const std::wstring& source) {
         const auto now = Clock::now();
         if (source != resolvedSource) {
@@ -188,6 +222,14 @@ struct MediaSession::Impl : std::enable_shared_from_this<Impl> {
         MediaTrackInfo snapshot;
         {
             std::lock_guard<std::mutex> lock(trackMutex);
+            // A track whose artwork has not arrived yet keeps the previous
+            // sleeve. Both the SMTC players and the NetEase cover fetch publish
+            // the track before its image is ready, and a flash of an empty
+            // square reads worse than a cover that is one song behind.
+            if (track.thumbnailBytes.empty() && !track.title.empty() &&
+                !publishedTrack.thumbnailBytes.empty()) {
+                track.thumbnailBytes = publishedTrack.thumbnailBytes;
+            }
             if (pendingPlayback) {
                 const auto& pending = *pendingPlayback;
                 const bool sameTrack = !track.hasSession &&
@@ -442,9 +484,31 @@ struct MediaSession::Impl : std::enable_shared_from_this<Impl> {
             chosen->track.artist != publishedTrack.artist ||
             chosen->track.album != publishedTrack.album ||
             chosen->source != selectedSource;
-        if (!trackChanged) chosen->track.thumbnailBytes = publishedTrack.thumbnailBytes;
-        if (trackChanged || chosen->track.thumbnailBytes.empty()) {
-            chosen->track.thumbnailBytes = ReadThumbnail(chosen->properties);
+        const std::wstring artworkKey = ArtworkKey(chosen->source,
+            chosen->track.title, chosen->track.artist);
+        if (trackChanged) {
+            pendingArtworkTitle = chosen->track.title;
+            pendingArtworkDeadline = now + std::chrono::seconds(3);
+        }
+        // Keep asking for the sleeve while the player is still catching up, but
+        // only for a few seconds; after that the previous cover stays put.
+        const bool awaitingArtwork = !pendingArtworkTitle.empty() &&
+            pendingArtworkTitle == chosen->track.title && now < pendingArtworkDeadline;
+        if (trackChanged || awaitingArtwork || chosen->track.thumbnailBytes.empty()) {
+            std::vector<uint8_t> artwork = CachedArtwork(artworkKey);
+            if (artwork.empty()) {
+                artwork = ReadThumbnail(chosen->properties);
+                StoreArtwork(artworkKey, artwork);
+            }
+            if (!artwork.empty()) {
+                chosen->track.thumbnailBytes = std::move(artwork);
+                pendingArtworkTitle.clear();
+            } else if (chosen->track.thumbnailBytes.empty() &&
+                !publishedTrack.thumbnailBytes.empty()) {
+                chosen->track.thumbnailBytes = publishedTrack.thumbnailBytes;
+            }
+        } else {
+            chosen->track.thumbnailBytes = publishedTrack.thumbnailBytes;
         }
         try {
             auto timeline = chosen->session.GetTimelineProperties();
